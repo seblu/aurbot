@@ -13,6 +13,7 @@ import tarfile
 import urllib.request
 import configparser
 import subprocess
+import pyalpm
 import AUR
 
 class Repositories(dict):
@@ -24,7 +25,6 @@ class Repositories(dict):
 		'''
 		Init a repository
 		'''
-		print('Initialize %s' % repo)
 		# create repository path
 		if self[repo]['path'] is not None:
 			os.makedirs(self[repo]['path'], exist_ok=True)
@@ -56,7 +56,8 @@ class Repositories(dict):
 					'arch': None,
 					'path': None,
 					'chroot': None,
-					'build_command': None}
+					'build_command': None,
+					'statusdb': None}
 				self[sec].update(cp.items(sec))
 				self[sec]['packages'] = cp.get(sec, 'packages', fallback='').split()
 				# checks
@@ -69,12 +70,38 @@ class Repositories(dict):
 	
 	def tobuild(self):
 		'''
-		 of packages to build
+		List of packages to build
 		'''
 		for repo in self:
 			for pkg in self[repo]['packages']:
 				yield (repo, pkg)
-	
+
+	def build(self, repo, path):
+		'''
+		Build package package inside repo
+		'''
+		cwd = os.getcwd()
+		try:
+			# chdir inside builddir
+			os.chdir(path)
+			# output fd
+			if verbose == 2:
+				 devnull = None
+			else:
+				devnull = open('/dev/null', 'w')
+			# define run commands
+			cmds = ['makechrootpkg', '-c', '-r', self[repo]['chroot']]
+			if self[repo]['arch'] == 'i686':
+				cmds.insert(0, 'linux32')
+			elif self[repo]['arch'] == 'x86_64':
+				cmds.insert(0, 'linux64')
+			if os.geteuid() != 0:
+				cmds.insert(0, 'sudo')
+			# run build
+			subprocess.check_call(cmds, stdout=devnull, stderr=devnull, close_fds=True)
+		finally:
+			os.chdir(cwd)
+
 	def add(self, repo, files=[]):
 		'''
 		Add pkg to repo
@@ -84,6 +111,17 @@ class Repositories(dict):
 			dstpath = os.path.join(self[repo]['path'], os.path.basename(f))
 			shutil.copy(f, dstpath)
 			subprocess.check_call(['repo-add', dbpath, dstpath], close_fds=True)
+
+	def all_packages(self):
+		'''
+		Return a set of all pacakges
+		'''
+		pkgs = set()
+		for repo in self:
+			for pkg in self[repo]['packages']:
+				pkgs.add(pkg)
+		return pkgs
+
 
 class AURPackages(dict):
 	'''
@@ -134,12 +172,23 @@ class AURPackages(dict):
 		Extract aur source tarball inside a directory path
 		'''
 		# feed package db
-		self.register(pkg, update=args.update)
+		self.register(pkg)
 		# get tarball
 		fo = urllib.request.urlopen('%s/%s' % (self.aur_url, self[pkg]['URLPath']))
 		# extract tarball
 		tarball = tarfile.open(mode='r|*', fileobj=fo)
 		tarball.extractall(path)
+
+##################
+#Printing commands
+##################
+def msg(message):
+	if verbose > 0:
+		print('\033[1;32m==>\033[m %s' % message)
+
+def msg2(message):
+	if verbose > 0:
+		print('  \033[1;34m->\033[m %s' % message)
 
 ################
 #Parser commands
@@ -149,58 +198,57 @@ def c_init(args):
 	'''
 	Init command
 	'''
+	msg('Initializing repositories')
 	for repo in args.repos:
+		msg2(repo)
 		args.repos.init(repo)
 
 def c_update(args):
 	'''
 	Update command
 	'''
-	args.aurpkg.update()
+	msg('Updating AUR packages database')
+	for pkg in sorted(args.repos.all_packages()):
+		msg2(pkg)
+		args.aurpkg.aur_update(pkg)
 
 def c_build(args):
 	'''
 	Build command
 	'''
-	# /dev/null fd
-	devnull = open('/dev/null', 'w')
-	
 	# start building
-	for repo, pkg in repositories.tobuild():
-		print('Building %s in %s' % (repo, pkg))
-		# creating temp directory to extract tarball
-		tempd = tempfile.TemporaryDirectory()
-		# extract package inside tempdir
-		aurpkg.extract(pkg, tempd.name)
-		# compile
+	for repo, pkg in args.repos.tobuild():
 		try:
+			msg('Building %s in %s' % (pkg, repo))
+			# creating temp directory to extract tarball
+			tempd = tempfile.TemporaryDirectory()
+			# extract package inside tempdir
+			msg2('Downloading from AUR')
+			aurpkg.extract(pkg, tempd.name)
+			# build package
+			msg2('Compiling')
 			builddir = os.path.join(tempd.name, pkg)
-			os.chdir(builddir)
-	#			subprocess.check_call(['makechrootpkg',
-	#					       '-c', '-r', repositories[reponame]['chroot']])
-			subprocess.check_call(['makepkg','-c'], close_fds=True, stdout=devnull, stderr=devnull)
+			args.repos.build(repo, builddir)
 			files = glob.glob(os.path.join(builddir, '*.pkg.tar.xz'))
 			if len(files) == 0:
 				raise Exception('Unable to find binary packages')
+			# add to repository
+			msg2('Adding to repository')
+			args.repos.add(repo, files)
 		except Exception as e:
 			# FIXME: mark package as invalid to build
 			print('build failure: %s' % e)
-		finally:
-			os.chdir(cwd)
-		# add to repository
-		try:
-			repositories.add(repo, files)
-		except Exception as e:
-			print('repository modification failure: %s' % e)
-		pass
 
 # we start here
 parser = argparse.ArgumentParser()
 parser.add_argument('-r', '--repo-conf', default='repositories.conf', help='repository definitions')
 parser.add_argument('-R', '--repo-db', default='repositories.json', help='repositories databases')
 parser.add_argument('-p', '--aurpkg-db', default='packages.json', help='AUR packages database')
-parser.add_argument('-q', '--quiet', action='store_true', default=False,
-	help='Quiet mode')
+mg = parser.add_mutually_exclusive_group()
+mg.add_argument('-q', '--quiet', action='store_true', default=False,
+	help='quiet mode')
+mg.add_argument('-v', '--verbose', action='store_true', default=False,
+	help='verbose mode')
 
 sp = parser.add_subparsers()
 p_init = sp.add_parser('init')
@@ -209,8 +257,6 @@ p_update = sp.add_parser('update')
 p_update.set_defaults(func=c_update)
 p_build = sp.add_parser('build')
 p_build.set_defaults(func=c_build)
-#p_update.add_argument('-u', '--update', action='store_true', default=False,
-#	help='Connect AUR to update packages db')
 
 # parse args
 args = parser.parse_args()
@@ -220,14 +266,21 @@ args.repo_conf = os.path.abspath(args.repo_conf)
 args.repo_db = os.path.abspath(args.repo_db)
 args.aurpkg_db = os.path.abspath(args.aurpkg_db)
 
-# store current directory
-cwd = os.getcwd()
+# set global output state
+if args.verbose:
+	verbose = 2
+elif args.quiet:
+	verbose = 0
+else:
+	verbose = 1
 
 # load repo mananger
+msg('Loading repositories configurations')
 repos = Repositories()
 repos.load(args.repo_conf, args.repo_db)
 
 # load package manager
+msg('Loading AUR pacakages database')
 aurpkg = AURPackages()
 aurpkg.load(args.aurpkg_db)
 
@@ -239,4 +292,5 @@ args.repos = repos
 args.func(args)
 
 # save aur packages db
+msg('Saving AUR pacakages database')
 aurpkg.save(args.aurpkg_db)
