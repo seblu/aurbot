@@ -1,19 +1,18 @@
-# Maintainer: Sebastien Luttringer <seblu@aur.archlinux.org>
+# Maintainer: Sébastien Luttringer
 
-pkgname=aurbot
-pkgver=1_git_$(git log -1 --pretty=format:%h)
-pkgrel=1
-pkgdesc='Automatic Arch User Repository builder'
+pkgname=aurbot-git
+pkgver=$(git log -1 --pretty=format:%h)
+pkgrel=$(date +%s)
+pkgdesc='AUR Builder Bot'
+arch=('any')
 url='https://github.com/seblu/aurbot'
 license=('GPL2')
-arch=('any')
+makedepends=('python-distribute')
+depends=('python' 'pyalpm' 'python-aur')
 
 package() {
-  # install binary
-  install -D -m 755 "$startdir/aurbot" "$pkgdir/usr/bin/aurbot"
-
-  # install config
-  install -D -m 644 "$startdir/repositories.conf" "$pkgdir/etc/aurbot/repository.conf"
+  cd "$startdir"
+  python setup.py install --root "$pkgdir"
 }
 
 # vim:set ts=2 sw=2 ft=sh et:

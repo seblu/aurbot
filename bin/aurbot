@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# Copyright Sébastien Luttringer <seblu@seblu.net>
 # Started 30/10/2011
+# Copyright 2012 - Sébastien Luttringer
 
 import os
 import time
