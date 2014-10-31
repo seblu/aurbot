@@ -104,6 +104,9 @@ class JsonDictFile(dict):
 				raise
 
 	def __del__(self):
+		self.save()
+
+	def save(self):
 		'''Save current dict into a json file'''
 		if len(self) == 0:
 			debug("Not saved. Dict is empty")
@@ -163,7 +166,8 @@ def event_loop(packages, cache, timeout):
 				continue
 			# we save last successful build in cache
 			cache[name] = pkg.lastmodified
-		# night is coming
+		# night is coming, save cache
+		cache.save()
 		debug("waiting for %ds" % timeout)
 		sleep(timeout)
 
