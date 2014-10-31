@@ -32,6 +32,7 @@ from tempfile import TemporaryDirectory
 from time import sleep
 from urllib.request import urlopen, Request
 from xdg.BaseDirectory import save_config_path, save_cache_path
+from systemd.daemon import notify
 
 AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
@@ -202,6 +203,9 @@ def main():
 		packages.read(args.packages_path)
 		# load cache
 		cache = JsonDictFile(args.cache_path)
+		# tell to systemd we are ready
+		notify("READY=1\n")
+		# while 42
 		event_loop(packages, cache, args.sleep)
 	except KeyboardInterrupt:
 		exit(ERR_ABORT)

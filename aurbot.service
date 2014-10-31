@@ -1,0 +1,14 @@
+[Unit]
+Description=AUR Builder Bot
+
+[Service]
+Type=notify
+User=aurbot
+ExecStart=/usr/bin/aurbot -d
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUSchedulingPolicy=batch
+
+[Install]
+WantedBy=multi-user.target

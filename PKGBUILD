@@ -2,20 +2,24 @@
 
 pkgname=aurbot-git
 pkgver=$(git log -1 --pretty=format:%h)
-pkgrel=$(date +%s)
+pkgrel=1
+#pkgrel=$(date +%s)
 pkgdesc='AUR Builder Bot'
 arch=('any')
 url='https://github.com/seblu/aurbot'
 license=('GPL2')
 makedepends=('python-distribute')
-depends=('python')
+depends=('python' 'systemd')
 optdepends=('devtools')
+install=aurbot.install
 
 package() {
   cd "$startdir"
-  python setup.py install --root "$pkgdir"
-  # ensure rights are corrects
-  chmod -R go+rX "$pkgdir/usr"
+  install -Dm755 aurbot "$pkgdir/usr/bin/aurbot"
+  install -Dm644 aurbot.service "$pkgdir/usr/lib/systemd/system/aurbot.service"
+  install -Dm644 aurbot.sysusers "$pkgdir/usr/lib/sysusers.d/aurbot.conf"
+  install -Dm644 packages.conf "$pkgdir/usr/share/doc/aurbot/samples/packages.conf"
+  install -dm750 "$pkgdir/var/lib/aurbot"
 }
 
-# vim:set ts=2 sw=2 ft=sh et:
+# vim:set ts=2 sw=2 et:
