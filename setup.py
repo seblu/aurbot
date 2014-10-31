@@ -10,11 +10,11 @@ setup(
     long_description=ldesc,
     author='Sébastien Luttringer',
     license='GPL2',
-    scripts=['bin/aurbot'],
+    scripts=['aurbot'],
     data_files=(
-	('/usr/share/aurbot/', ('README.rst', 'COPYING', 'CHANGELOG')),
-        ('/usr/share/aurbot/samples/', ('samples/repositories.conf',))
-        ),
+		('/usr/share/aurbot/', ('README.rst', 'COPYING', 'CHANGELOG')),
+		('/usr/share/doc/aurbot/samples/', ('packages.conf',))
+    ),
     classifiers=[
         'Operating System :: Unix',
         'Programming Language :: Python',

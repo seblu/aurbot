@@ -8,7 +8,8 @@ arch=('any')
 url='https://github.com/seblu/aurbot'
 license=('GPL2')
 makedepends=('python-distribute')
-depends=('python' 'pyalpm' 'python-aur')
+depends=('python')
+optdepends=('devtools')
 
 package() {
   cd "$startdir"
