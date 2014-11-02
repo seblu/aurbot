@@ -104,9 +104,6 @@ class JsonDictFile(dict):
 				error("Unable to load json file %s: %s" % (path, exp))
 				raise
 
-	def __del__(self):
-		self.save()
-
 	def save(self):
 		'''Save current dict into a json file'''
 		if len(self) == 0:
@@ -167,8 +164,8 @@ def event_loop(packages, cache, timeout):
 				continue
 			# we save last successful build in cache
 			cache[name] = pkg.lastmodified
+			cache.save()
 		# night is coming, save cache
-		cache.save()
 		debug("waiting for %ds" % timeout)
 		sleep(timeout)
 
