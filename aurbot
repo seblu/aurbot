@@ -27,10 +27,10 @@ from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from logging import debug, warning, info, error
 from os import chdir, environ, getcwd, mkdir
 from os.path import exists, join
-from subprocess import check_call
+from subprocess import check_call, DEVNULL
 from tarfile import open as tar
 from tempfile import TemporaryDirectory
-from time import sleep, time
+from time import sleep, time, strftime, localtime
 from urllib.request import urlopen, Request
 from xdg.BaseDirectory import save_config_path, save_data_path
 from systemd.daemon import notify
@@ -106,6 +106,13 @@ class LocalPackage(dict):
 		if not exists(self.path):
 			mkdir(self.path)
 
+	@property
+	def logdir(self):
+		logdir = join(self.path, "log")
+		if not exists(logdir):
+			mkdir(logdir)
+		return logdir
+
 	def getlastX(self, X):
 		try:
 			return int(open(join(self.path, X), "r").read())
@@ -132,19 +139,26 @@ def build(build_cmd, commit_cmd, localpkg, aurpkg):
 	# extract tarball
 	debug("Extracting aur tarball")
 	aurpkg.extract(build_dir.name)
+	# timestamping
+	now = time()
+	# log files
+	fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
+	debug("Build log file path: %s" % fp)
+	fd = open(fp, "w")
 	cwd = getcwd()
 	try:
 		chdir("%s/%s" % (build_dir.name, aurpkg.name))
 
 		info("Starting build command")
-		check_call(build_cmd, shell=True, close_fds=True)
+		check_call(build_cmd, stdin=DEVNULL, stdout=fd, stderr=fd, shell=True, close_fds=True)
 
 		if commit_cmd is not None:
 			info("Starting commit command")
-			check_call(commit_cmd, shell=True, close_fds=True)
+			check_call(commit_cmd, stdin=DEVNULL, stdout=fd, stderr=fd, shell=True, close_fds=True)
 	finally:
 		chdir(cwd)
-	localpkg.lastbuild = time()
+		fd.close()
+	localpkg.lastbuild = now
 	localpkg.lastmodified = aurpkg.lastmodified
 
 def event_loop(packages, timeout):
