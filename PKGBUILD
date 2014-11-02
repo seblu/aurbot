@@ -1,9 +1,9 @@
 # Maintainer: Sébastien Luttringer
 
 pkgname=aurbot-git
-pkgver=$(git log -1 --pretty=format:%h)
+#pkgver=$(git log -1 --pretty=format:%h)
+pkgver=$(date +%y%j%H%M)
 pkgrel=1
-#pkgrel=$(date +%s)
 pkgdesc='AUR Builder Bot'
 arch=('any')
 url='https://github.com/seblu/aurbot'
