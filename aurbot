@@ -150,8 +150,9 @@ def build(localpkg, aurpkg):
 		info("Starting build command")
 		check_call(localpkg["build_cmd"], shell=True, close_fds=True)
 
-		info("Starting commit command")
-		check_call(localpkg["commit_cmd"], shell=True, close_fds=True)
+		if localpkg.get("commit_cmd", None) is not None:
+			info("Starting commit command")
+			check_call(localpkg["commit_cmd"], shell=True, close_fds=True)
 	finally:
 		chdir(cwd)
 
@@ -160,11 +161,16 @@ def event_loop(packages, cache, timeout):
 	program roundabout
 	'''
 	while True:
-		for name in packages.sections():
+		for name, config in packages.items():
+			if name == "DEFAULT":
+				continue
 			info("[%s]" % name)
+			if config.get("build_cmd", None) is None:
+				error("Build_cmd is missing in config file")
+				continue
 			pkg = AURPackage(name)
 			# For security, if the maintainer has changed we pass
-			maintainer = packages[name].get("maintainer", None)
+			maintainer = config.get("maintainer", None)
 			if maintainer != pkg.maintainer:
 				error("Invalid maintainer for package %s" % name)
 				debug("registered maintainer: %s" % maintainer)
@@ -179,7 +185,7 @@ def event_loop(packages, cache, timeout):
 			# package needs to be built and commited
 			try:
 				info("New version available: %s" % pkg.version)
-				build(packages[name], pkg)
+				build(config, pkg)
 			except Exception as exp:
 				error(exp)
 				continue
