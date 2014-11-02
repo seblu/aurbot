@@ -25,14 +25,14 @@ from configparser import ConfigParser
 from json import load as jload, dump as jdump, loads as jloads
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from logging import debug, warning, info, error
-from os import chdir, environ, getcwd
-from os.path import join
+from os import chdir, environ, getcwd, mkdir
+from os.path import exists, join
 from subprocess import check_call
 from tarfile import open as tar
 from tempfile import TemporaryDirectory
-from time import sleep
+from time import sleep, time
 from urllib.request import urlopen, Request
-from xdg.BaseDirectory import save_config_path, save_cache_path
+from xdg.BaseDirectory import save_config_path, save_data_path
 from systemd.daemon import notify
 
 AUR_URL = 'https://aur.archlinux.org'
@@ -70,8 +70,7 @@ class AURPackage(dict):
 		debug("getting %s aur infos" % self.name)
 		url = "%s/rpc.php?type=info&arg=%s" % (AUR_URL, name)
 		url_req = Request(url, headers={"User-Agent": USER_AGENT})
-		debug("Requesting url: %s" % url)
-		debug("Timeout is %s" % timeout)
+		debug("Requesting url: %s (timeout: %s)" % (url, timeout))
 		url_fd = urlopen(url_req, timeout=timeout)
 		d = jloads(url_fd.read().decode("utf-8"))
 		if d["version"] != 1:
@@ -97,46 +96,35 @@ class AURPackage(dict):
 		fo.close()
 
 
-class JsonDictFile(dict):
-	'''Json serialized dict'''
+class LocalPackage(dict):
+	'''Local package data abstraction'''
 
-	def __init__(self, path):
-		'''Load json file'''
-		assert(path is not None)
+	def __init__(self, name):
+		self.name = name
+		self.path = join(save_data_path(XDG_DIRECTORY), name)
+		debug("local path is: %s" % self.path)
+		if not exists(self.path):
+			mkdir(self.path)
+
+	def getlastX(self, X):
 		try:
-			self._fileobj = open(path, "a+")
-		except (IOError, OSError) as exp:
-			error("Unable to access to json file %s: %s" % (path, exp))
-			raise
-		if self._fileobj.seek(0, 1) == 0:
-			debug("Json file is empty")
-		else:
-			debug("Loading json file %s" % path)
-			try:
-				self._fileobj.seek(0, 0)
-				dico = jload(self._fileobj)
-				self.update(dico)
-			except Exception as exp:
-				error("Unable to load json file %s: %s" % (path, exp))
-				raise
+			return int(open(join(self.path, X), "r").read())
+		except Exception as exp:
+			debug("Failed to read %s time: %s" % (X, exp))
+			return 0
 
-	def save(self):
-		'''Save current dict into a json file'''
-		if len(self) == 0:
-			debug("Not saved. Dict is empty")
-			return
-		if self._fileobj is not None:
-			debug("Saving dict into json file")
-			try:
-				self._fileobj.truncate(0)
-				self._fileobj.seek(0, 0)
-				jdump(self, self._fileobj)
-				self._fileobj.flush()
-			except Exception as exp:
-				error("Unable to save json file: %s" % exp)
-				raise
+	def setlastX(self, X, value):
+		try:
+			open(join(self.path, X), "w").write("%d\n" % value)
+		except Exception as exp:
+			error("Failed to save %s time: %s" % (X, exp))
 
-def build(localpkg, aurpkg):
+	lastbuild = property(lambda x: LocalPackage.getlastX(x, "lastbuild"),
+						 lambda x, y: LocalPackage.setlastX(x, "lastbuild", y))
+	lastmodified = property(lambda x: LocalPackage.getlastX(x, "lastmodified"),
+						 lambda x, y: LocalPackage.setlastX(x, "lastmodified", y))
+
+def build(build_cmd, commit_cmd, localpkg, aurpkg):
 	info("Getting last AUR version")
 	# find build dir
 	build_dir = TemporaryDirectory()
@@ -149,15 +137,17 @@ def build(localpkg, aurpkg):
 		chdir("%s/%s" % (build_dir.name, aurpkg.name))
 
 		info("Starting build command")
-		check_call(localpkg["build_cmd"], shell=True, close_fds=True)
+		check_call(build_cmd, shell=True, close_fds=True)
 
-		if localpkg.get("commit_cmd", None) is not None:
+		if commit_cmd is not None:
 			info("Starting commit command")
-			check_call(localpkg["commit_cmd"], shell=True, close_fds=True)
+			check_call(commit_cmd, shell=True, close_fds=True)
 	finally:
 		chdir(cwd)
+	localpkg.lastbuild = time()
+	localpkg.lastmodified = aurpkg.lastmodified
 
-def event_loop(packages, cache, timeout):
+def event_loop(packages, timeout):
 	'''
 	program roundabout
 	'''
@@ -166,33 +156,41 @@ def event_loop(packages, cache, timeout):
 			if name == "DEFAULT":
 				continue
 			info("[%s]" % name)
-			if config.get("build_cmd", None) is None:
+			if "build_cmd" not in config:
 				error("Build_cmd is missing in config file")
 				continue
-			pkg = AURPackage(name)
+			aur = AURPackage(name)
+			local = LocalPackage(name)
 			# For security, if the maintainer has changed we pass
-			maintainer = config.get("maintainer", None)
-			if maintainer != pkg.maintainer:
+			maintainer = config.get("maintainer")
+			if maintainer != aur.maintainer:
 				error("Invalid maintainer for package %s" % name)
 				debug("registered maintainer: %s" % maintainer)
-				debug("AUR maintainer: %s" % pkg.maintainer)
+				debug("AUR maintainer: %s" % aur.maintainer)
 				continue
 			# checks update
-			debug("Cache lastmodified: %s" % cache.get(name, 0))
-			debug("AUR lastmodified: %s" % pkg.lastmodified)
-			if pkg.lastmodified <= cache.get(name, 0):
-				info("No new version available")
-				continue
-			# package needs to be built and commited
-			try:
-				info("New version available: %s" % pkg.version)
-				build(config, pkg)
-			except Exception as exp:
-				error(exp)
-				continue
-			# we save last successful build in cache
-			cache[name] = pkg.lastmodified
-			cache.save()
+			debug("AUR last modified: %s" % aur.lastmodified)
+			debug("Local last modified: %s" % local.lastmodified)
+			debug("Local last build: %s" % local.lastbuild)
+			# build new aur version
+			if aur.lastmodified > local.lastmodified:
+				info("New version available: %s" % aur.version)
+				build(config["build_cmd"], config.get("commit_cmd"), local, aur)
+			# re-build package when force time is passed
+			elif "force" in config:
+				if config["force"].isdigit() is False:
+					warning("Invalid force value, ignore it")
+					continue
+				# if lastbuild not exists, it will be equal to 0
+				# too small to be > to time() even with big force time
+				now = int(time())
+				force = int(config["force"])
+				debug("Force at: %ss, currently: %ss" % (force, now - local.lastbuild))
+				if local.lastbuild + force <= now:
+					info("Forced update")
+					build(config["build_cmd"], config.get("commit_cmd"), local, aur)
+			else:
+				info("Nothing to do")
 		# night is coming, save cache
 		debug("waiting for %ds" % timeout)
 		sleep(timeout)
@@ -201,20 +199,18 @@ def parse_argv():
 	'''Parse command line arguments'''
 	# load parser
 	parser = ArgumentParser()
-	parser.add_argument("-p", "--packages-path", help="packages config file path")
-	parser.add_argument("-c", "--cache-path", help="cache file path")
+	parser.add_argument("-c", "--config", help="packages config file path")
 	parser.add_argument("-s", "--sleep", type=int, default=86400, help="sleep interval between checks")
 	parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
+	parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
 	# parse it!
 	args = parser.parse_args()
 	# set global debug mode
 	if args.debug:
 		getLogger().setLevel(DEBUG)
 	# set default paths
-	if args.packages_path is None:
-		args.packages_path = join(save_config_path(XDG_DIRECTORY), "packages.conf")
-	if args.cache_path is None:
-		args.cache_path = join(save_cache_path(XDG_DIRECTORY), "packages.cache")
+	if args.config is None:
+		args.config = join(save_config_path(XDG_DIRECTORY), "packages.conf")
 	return args
 
 def main():
@@ -229,13 +225,11 @@ def main():
 		args = parse_argv()
 		# parse package list
 		packages = ConfigParser()
-		packages.read(args.packages_path)
-		# load cache
-		cache = JsonDictFile(args.cache_path)
+		packages.read(args.config)
 		# tell to systemd we are ready
 		notify("READY=1\n")
 		# while 42
-		event_loop(packages, cache, args.sleep)
+		event_loop(packages, args.sleep)
 	except KeyboardInterrupt:
 		exit(ERR_ABORT)
 	# except BaseError as exp:
