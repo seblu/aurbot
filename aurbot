@@ -128,9 +128,10 @@ class JsonDictFile(dict):
 		if self._fileobj is not None:
 			debug("Saving dict into json file")
 			try:
-				self._fileobj.seek(0, 0)
 				self._fileobj.truncate(0)
+				self._fileobj.seek(0, 0)
 				jdump(self, self._fileobj)
+				self._fileobj.flush()
 			except Exception as exp:
 				error("Unable to save json file: %s" % exp)
 				raise
