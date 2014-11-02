@@ -23,7 +23,8 @@
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from json import load as jload, dump as jdump, loads as jloads
-from logging import getLogger, debug, warning, error, DEBUG
+from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
+from logging import debug, warning, info, error
 from os import getcwd, chdir
 from os.path import join
 from subprocess import check_call
@@ -42,6 +43,21 @@ ERR_USAGE = 1
 ERR_FATAL = 2
 ERR_ABORT = 3
 ERR_UNKNOWN = 4
+
+class ABFormatter(Formatter):
+	'''
+	Customer logging formater
+	'''
+	def __init__(self, fmt="[%(levelname)s] %(msg)s"):
+		Formatter.__init__(self, fmt)
+
+	def format(self, record):
+		format_orig = self._style._fmt
+		if record.levelno == INFO and getLogger(record.name).getEffectiveLevel() != DEBUG:
+			self._style._fmt =  "%(msg)s"
+		result = Formatter.format(self, record)
+		self._style._fmt = format_orig
+		return result
 
 
 class AURPackage(dict):
@@ -69,7 +85,7 @@ class AURPackage(dict):
 		raise AttributeError()
 
 	def __repr__(self):
-		return "%s v%s (%s)" % (self.name, self.version, self.description)
+		return "%s %s" % (self.name, self.version)
 
 	def extract(self, path):
 		'''
@@ -120,18 +136,21 @@ class JsonDictFile(dict):
 				raise
 
 def build(localpkg, aurpkg):
-	debug("we build %s" % aurpkg.name)
+	info("Getting last AUR version")
 	# find build dir
 	build_dir = TemporaryDirectory()
-	debug("build dir is %s" % build_dir.name)
+	debug("Build dir is %s" % build_dir.name)
 	# extract tarball
-	debug("extracting aur tarball")
+	debug("Extracting aur tarball")
 	aurpkg.extract(build_dir.name)
 	cwd = getcwd()
 	try:
 		chdir("%s/%s" % (build_dir.name, aurpkg.name))
+
+		info("Starting build command")
 		check_call(localpkg["build_cmd"], shell=True, close_fds=True)
-		# build was succesful
+
+		info("Starting commit command")
 		check_call(localpkg["commit_cmd"], shell=True, close_fds=True)
 	finally:
 		chdir(cwd)
@@ -142,25 +161,27 @@ def event_loop(packages, cache, timeout):
 	'''
 	while True:
 		for name in packages.sections():
-			debug("Checking %s" % name)
+			info("[%s]" % name)
 			pkg = AURPackage(name)
-			print(pkg)
 			# For security, if the maintainer has changed we pass
 			maintainer = packages[name].get("maintainer", None)
 			if maintainer != pkg.maintainer:
-				warning("Invalid maintainer for package %s" % name)
+				error("Invalid maintainer for package %s" % name)
 				debug("registered maintainer: %s" % maintainer)
 				debug("AUR maintainer: %s" % pkg.maintainer)
 				continue
 			# checks update
+			debug("Cache lastmodified: %s" % cache.get(name, 0))
+			debug("AUR lastmodified: %s" % pkg.lastmodified)
 			if pkg.lastmodified <= cache.get(name, 0):
-				debug("%s was already built" % name)
+				info("No new version available")
 				continue
 			# package needs to be built and commited
 			try:
+				info("New version available: %s" % pkg.version)
 				build(packages[name], pkg)
 			except Exception as exp:
-				warning("chiche: %s" % exp)
+				error(exp)
 				continue
 			# we save last successful build in cache
 			cache[name] = pkg.lastmodified
@@ -193,6 +214,11 @@ def parse_argv():
 def main():
 	'''Program entry point'''
 	try:
+		# set logger config
+		hdlr = StreamHandler()
+		hdlr.setFormatter(ABFormatter())
+		getLogger().addHandler(hdlr)
+		getLogger().setLevel(INFO)
 		# parse command line
 		args = parse_argv()
 		# parse package list
