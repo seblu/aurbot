@@ -25,7 +25,7 @@ from configparser import ConfigParser
 from json import load as jload, dump as jdump, loads as jloads
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from logging import debug, warning, info, error
-from os import getcwd, chdir
+from os import chdir, environ, getcwd
 from os.path import join
 from subprocess import check_call
 from tarfile import open as tar
@@ -210,7 +210,6 @@ def parse_argv():
 	# set global debug mode
 	if args.debug:
 		getLogger().setLevel(DEBUG)
-		debug("debug on")
 	# set default paths
 	if args.packages_path is None:
 		args.packages_path = join(save_config_path(XDG_DIRECTORY), "packages.conf")
@@ -225,7 +224,7 @@ def main():
 		hdlr = StreamHandler()
 		hdlr.setFormatter(ABFormatter())
 		getLogger().addHandler(hdlr)
-		getLogger().setLevel(INFO)
+		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
 		# parse command line
 		args = parse_argv()
 		# parse package list
