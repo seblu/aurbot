@@ -155,12 +155,14 @@ def build(build_cmd, commit_cmd, localpkg, aurpkg):
 		if commit_cmd is not None:
 			info("Starting commit command")
 			check_call(commit_cmd, stdin=DEVNULL, stdout=fd, stderr=fd, shell=True, close_fds=True)
+
+		localpkg.lastbuild = now
+		localpkg.lastmodified = aurpkg.lastmodified
+	except Exception as exp:
+		error("Build failure: %s" % exp)
 	finally:
 		chdir(cwd)
 		fd.close()
-	localpkg.lastbuild = now
-	localpkg.lastmodified = aurpkg.lastmodified
-
 def event_loop(packages, timeout):
 	'''
 	program roundabout
