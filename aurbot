@@ -175,7 +175,11 @@ def event_loop(packages, timeout):
 			if "build_cmd" not in config:
 				error("Build_cmd is missing in config file")
 				continue
-			aur = AURPackage(name)
+			try:
+				aur = AURPackage(name)
+			except Exception as exp:
+				error("Unable to get AUR package info: %s" % exp)
+				continue
 			local = LocalPackage(name)
 			# For security, if the maintainer has changed we pass
 			maintainer = config.get("maintainer")
