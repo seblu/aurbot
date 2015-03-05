@@ -74,7 +74,9 @@ class AURPackage(dict):
 		url_fd = urlopen(url_req, timeout=timeout)
 		d = jloads(url_fd.read().decode("utf-8"))
 		if d["version"] != 1:
-			raise Exception("Unknown AUR Backend version")
+			raise Exception("Unknown AUR Backend version: %s" % d["version"])
+		if len(d["results"]) == 0:
+			raise Exception("No such package: %s" % name)
 		self._info = d["results"]
 
 	def __getattr__(self, name):
