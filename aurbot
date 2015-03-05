@@ -133,38 +133,54 @@ class LocalPackage(dict):
 	lastmodified = property(lambda x: LocalPackage.getlastX(x, "lastmodified"),
 						 lambda x, y: LocalPackage.setlastX(x, "lastmodified", y))
 
-def build(build_cmd, commit_cmd, localpkg, aurpkg):
-	info("Getting last AUR version")
+def build(config, localpkg, aurpkg):
+	'''
+	Build and commit a package
+	Notify if succeeded
+	'''
 	# find build dir
 	build_dir = TemporaryDirectory()
 	debug("Build dir is %s" % build_dir.name)
 	# extract tarball
 	debug("Extracting aur tarball")
 	aurpkg.extract(build_dir.name)
-	# timestamping
-	now = time()
 	# log files
 	fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
 	debug("Build log file path: %s" % fp)
-	fd = open(fp, "w")
-	cwd = getcwd()
-	try:
-		chdir("%s/%s" % (build_dir.name, aurpkg.name))
+	with open(fp, "w") as fd:
+		try:
+			cwd = getcwd()
+			chdir("%s/%s" % (build_dir.name, aurpkg.name))
 
-		info("Starting build command")
-		check_call(build_cmd, stdin=DEVNULL, stdout=fd, stderr=fd, shell=True, close_fds=True)
+			# build
+			info("Starting build command")
+			start_time = time()
+			try:
+				check_call(config["build_cmd"], stdin=DEVNULL, stdout=fd,
+					stderr=fd, shell=True, close_fds=True)
+			except Exception as exp:
+				error("Build command failure: %s" % exp)
+				raise
+			info("Build duration: %ss" % (time() - start_time))
 
-		if commit_cmd is not None:
-			info("Starting commit command")
-			check_call(commit_cmd, stdin=DEVNULL, stdout=fd, stderr=fd, shell=True, close_fds=True)
+			# commit
+			if "commit_cmd" in config:
+				info("Starting commit command")
+				start_time = time()
+				try:
+					check_call(config["commit_cmd"], stdin=DEVNULL, stdout=fd,
+						stderr=fd, shell=True, close_fds=True)
+				except Exception as exp:
+					error("Commit command failure: %s" % exp)
+					raise
+				info("Commit duration: %ss" % (time() - start_time))
 
-		localpkg.lastbuild = now
-		localpkg.lastmodified = aurpkg.lastmodified
-	except Exception as exp:
-		error("Build failure: %s" % exp)
-	finally:
-		chdir(cwd)
-		fd.close()
+			# register success
+			localpkg.lastbuild = time()
+			localpkg.lastmodified = aurpkg.lastmodified
+		finally:
+			chdir(cwd)
+
 
 def event_loop(packages, timeout):
 	'''
@@ -176,7 +192,7 @@ def event_loop(packages, timeout):
 				continue
 			info("[%s]" % name)
 			if "build_cmd" not in config:
-				error("Build_cmd is missing in config file")
+				error("build_cmd is missing in config file")
 				continue
 			try:
 				aur = AURPackage(name)
@@ -198,7 +214,7 @@ def event_loop(packages, timeout):
 			# build new aur version
 			if aur.lastmodified > local.lastmodified:
 				info("New version available: %s" % aur.version)
-				build(config["build_cmd"], config.get("commit_cmd"), local, aur)
+				build(config, local, aur)
 			# re-build package when force time is passed
 			elif "force" in config:
 				if config["force"].isdigit() is False:
@@ -211,7 +227,7 @@ def event_loop(packages, timeout):
 				debug("Force at: %ss, currently: %ss" % (force, now - local.lastbuild))
 				if local.lastbuild + force <= now:
 					info("Forced update")
-					build(config["build_cmd"], config.get("commit_cmd"), local, aur)
+					build(config, local, aur)
 			else:
 				info("Nothing to do")
 		# night is coming, save cache
