@@ -22,18 +22,20 @@
 
 from argparse import ArgumentParser
 from configparser import ConfigParser
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from json import load as jload, dump as jdump, loads as jloads
-from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from logging import debug, warning, info, error
+from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir
 from os.path import exists, join
-from subprocess import check_call, DEVNULL
+from subprocess import Popen, check_call, DEVNULL, PIPE
+from systemd.daemon import notify
 from tarfile import open as tar
 from tempfile import TemporaryDirectory
 from time import sleep, time, strftime, localtime
 from urllib.request import urlopen, Request
 from xdg.BaseDirectory import save_config_path, save_data_path
-from systemd.daemon import notify
 
 AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
@@ -133,6 +135,26 @@ class LocalPackage(dict):
 	lastmodified = property(lambda x: LocalPackage.getlastX(x, "lastmodified"),
 						 lambda x, y: LocalPackage.setlastX(x, "lastmodified", y))
 
+def send_report(config, localpkg, aurpkg, status, logfile):
+	'''Send build notification'''
+	# generate message
+	msg = MIMEMultipart()
+	msg['Subject'] = 'Build %s for %s %s' % (
+		"successful" if status else "failure", localpkg.name, aurpkg.version)
+	msg['From'] = "Aurbot"
+	msg['To'] = config["notify"]
+
+	# attach logfile
+	with open(logfile, "r") as fd:
+		mt = MIMEText(fd.read())
+	msg.attach(mt)
+
+	# send message
+	proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
+	proc.stdin.write(msg.as_bytes())
+	proc.stdin.close()
+	proc.wait()
+
 def build(config, localpkg, aurpkg):
 	'''
 	Build and commit a package
@@ -178,9 +200,15 @@ def build(config, localpkg, aurpkg):
 			# register success
 			localpkg.lastbuild = time()
 			localpkg.lastmodified = aurpkg.lastmodified
+			status = True
+		except Exception as exp:
+			status = False
 		finally:
 			chdir(cwd)
 
+	# notify of success
+	if "notify" in config:
+		send_report(config, localpkg, aurpkg, status, fp)
 
 def event_loop(packages, timeout):
 	'''
