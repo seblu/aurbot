@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # aurbot - Archlinux User Repository Builder Bot
-# Copyright © 2014 Sébastien Luttringer
+# Copyright © 2015 Sébastien Luttringer
 #
 # Started, October 30th 2011
 #
@@ -163,6 +163,7 @@ def build(build_cmd, commit_cmd, localpkg, aurpkg):
 	finally:
 		chdir(cwd)
 		fd.close()
+
 def event_loop(packages, timeout):
 	'''
 	program roundabout
@@ -252,9 +253,6 @@ def main():
 		event_loop(packages, args.sleep)
 	except KeyboardInterrupt:
 		exit(ERR_ABORT)
-	# except BaseError as exp:
-	#     error(exp)
-	#     exit(ERR_FATAL)
 	except Exception as exp:
 		error(exp)
 		if getLogger().getEffectiveLevel() != DEBUG:
