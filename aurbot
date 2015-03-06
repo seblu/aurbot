@@ -176,6 +176,8 @@ def build(config, localpkg, aurpkg):
 
 			# build
 			info("Starting build command")
+			debug(config["build_cmd"])
+			fd.write("Build command: %s\n" % config["build_cmd"])
 			start_time = time()
 			try:
 				check_call(config["build_cmd"], stdin=DEVNULL, stdout=fd,
@@ -183,11 +185,15 @@ def build(config, localpkg, aurpkg):
 			except Exception as exp:
 				error("Build command failure: %s" % exp)
 				raise
-			info("Build duration: %ss" % (time() - start_time))
+			end_time = time()
+			info("Build duration: %.2fs" % (end_time - start_time))
+			fd.write("Build duration: %.2fs\n" % (end_time - start_time))
 
 			# commit
 			if "commit_cmd" in config:
 				info("Starting commit command")
+				debug(config["commit_cmd"])
+				fd.write("Commit command: %s\n" % config["commit_cmd"])
 				start_time = time()
 				try:
 					check_call(config["commit_cmd"], stdin=DEVNULL, stdout=fd,
@@ -195,7 +201,9 @@ def build(config, localpkg, aurpkg):
 				except Exception as exp:
 					error("Commit command failure: %s" % exp)
 					raise
-				info("Commit duration: %ss" % (time() - start_time))
+				end_time = time()
+				info("Commit duration: %.2fs" % (end_time - start_time))
+				fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
 
 			# register success
 			localpkg.lastbuild = time()
