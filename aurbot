@@ -24,6 +24,7 @@ from argparse import ArgumentParser
 from configparser import ConfigParser
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate
 from json import load as jload, dump as jdump, loads as jloads
 from logging import debug, warning, info, error
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
@@ -139,10 +140,11 @@ def send_report(config, localpkg, aurpkg, status, logfile):
 	'''Send build notification'''
 	# generate message
 	msg = MIMEMultipart()
-	msg['Subject'] = 'Build %s for %s %s' % (
+	msg["Subject"] = "Build %s for %s %s" % (
 		"successful" if status else "failure", localpkg.name, aurpkg.version)
-	msg['From'] = "Aurbot"
-	msg['To'] = config["notify"]
+	msg["From"] = "Aurbot"
+	msg["To"] = config["notify"]
+	msg["Date"] = formatdate(localtime=True)
 
 	# attach logfile
 	with open(logfile, "r") as fd:
