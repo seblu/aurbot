@@ -180,6 +180,7 @@ def build(config, localpkg, aurpkg):
 			info("Starting build command")
 			debug(config["build_cmd"])
 			fd.write("Build command: %s\n" % config["build_cmd"])
+			fd.flush()
 			start_time = time()
 			try:
 				check_call(config["build_cmd"], stdin=DEVNULL, stdout=fd,
@@ -196,6 +197,7 @@ def build(config, localpkg, aurpkg):
 				info("Starting commit command")
 				debug(config["commit_cmd"])
 				fd.write("Commit command: %s\n" % config["commit_cmd"])
+				fd.flush()
 				start_time = time()
 				try:
 					check_call(config["commit_cmd"], stdin=DEVNULL, stdout=fd,
