@@ -222,11 +222,14 @@ def build(config, localpkg, aurpkg):
 	if "notify" in config:
 		send_report(config, localpkg, aurpkg, status, fp)
 
-def event_loop(packages, timeout):
+def event_loop(config_path, timeout):
 	'''
 	program roundabout
 	'''
 	while True:
+		# parse package list
+		packages = ConfigParser()
+		packages.read(config_path)
 		for name, config in packages.items():
 			if name == "DEFAULT":
 				continue
@@ -302,13 +305,10 @@ def main():
 		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
 		# parse command line
 		args = parse_argv()
-		# parse package list
-		packages = ConfigParser()
-		packages.read(args.config)
 		# tell to systemd we are ready
 		notify("READY=1\n")
 		# while 42
-		event_loop(packages, args.sleep)
+		event_loop(args.config, args.sleep)
 	except KeyboardInterrupt:
 		exit(ERR_ABORT)
 	except Exception as exp:
