@@ -30,6 +30,7 @@ from logging import debug, warning, info, error
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir
 from os.path import exists, join
+from signal import signal, SIGHUP
 from subprocess import Popen, check_call, DEVNULL, PIPE
 from systemd.daemon import notify
 from tarfile import open as tar
@@ -303,6 +304,8 @@ def main():
 		hdlr.setFormatter(ABFormatter())
 		getLogger().addHandler(hdlr)
 		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
+		# use sighup to unblock sleep syscall
+		signal(SIGHUP, lambda signum, frame: info("SIGHUP received"))
 		# parse command line
 		args = parse_argv()
 		# tell to systemd we are ready
