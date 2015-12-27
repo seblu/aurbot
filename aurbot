@@ -263,7 +263,7 @@ def event_loop(config_path):
 			next_checks.add(check_interval)
 			# get remote data
 			try:
-				aur = AURPackage(name)
+				aur = AURPackage(name, config.getint("timeout"))
 				local.lastchecked = int(time())
 			except Exception as exp:
 				error("Unable to get AUR package info: %s" % exp)
