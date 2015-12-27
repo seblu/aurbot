@@ -46,6 +46,11 @@ QUICK SETUP
 4. Run aurbot
 
 
+ENVIRONMENT
+===========
+*AURBOT_CONFIG* overrides the config file path (default is /etc/aurbot.conf)
+
+
 SOURCES
 =======
 *Aurbot* sources are available on github [#]_.

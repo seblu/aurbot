@@ -43,6 +43,7 @@ AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
 XDG_DIRECTORY = "aurbot"
 DEFAULT_CHECK_INTERVAL = 86400
+DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
 
 ERR_USAGE = 1
 ERR_FATAL = 2
@@ -357,7 +358,8 @@ def parse_argv():
 	'''Parse command line arguments'''
 	# load parser
 	parser = ArgumentParser()
-	parser.add_argument("-c", "--config", help="packages config file path")
+	parser.add_argument("-c", "--config", help="config file path",
+		default=environ.get("AURBOT_CONFIG", DEFAULT_CONFIG_FILE))
 	parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
 	parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
 	# parse it!
@@ -365,9 +367,6 @@ def parse_argv():
 	# set global debug mode
 	if args.debug:
 		getLogger().setLevel(DEBUG)
-	# set default paths
-	if args.config is None:
-		args.config = join(save_config_path(XDG_DIRECTORY), "packages.conf")
 	return args
 
 def main():
@@ -377,6 +376,7 @@ def main():
 		hdlr = StreamHandler()
 		hdlr.setFormatter(ABFormatter())
 		getLogger().addHandler(hdlr)
+		# Early debugging mode
 		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
 		# use sighup to unblock sleep syscall
 		signal(SIGHUP, lambda signum, frame: info("SIGHUP received"))
