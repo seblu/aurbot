@@ -132,10 +132,15 @@ class LocalPackage(dict):
 		except Exception as exp:
 			error("Failed to save %s time: %s" % (X, exp))
 
+	# store the moment where the build was done locally
 	lastbuild = property(lambda x: LocalPackage.getlastX(x, "lastbuild"),
 						 lambda x, y: LocalPackage.setlastX(x, "lastbuild", y))
-	lastmodified = property(lambda x: LocalPackage.getlastX(x, "lastmodified"),
-						 lambda x, y: LocalPackage.setlastX(x, "lastmodified", y))
+	# store the aur lastmodified value of the last sucessful build
+	lastsuccess = property(lambda x: LocalPackage.getlastX(x, "lastsuccess"),
+						 lambda x, y: LocalPackage.setlastX(x, "lastsuccess", y))
+	# store the aur lastmodified value of the last failed build
+	lastfailed = property(lambda x: LocalPackage.getlastX(x, "lastfailed"),
+						 lambda x, y: LocalPackage.setlastX(x, "lastfailed", y))
 
 def send_report(config, localpkg, aurpkg, status, logfile):
 	'''Send build notification'''
@@ -163,15 +168,17 @@ def build(config, localpkg, aurpkg):
 	Build and commit a package
 	Notify if succeeded
 	'''
+	# register the build
+	localpkg.lastbuild = time()
+	# log files
+	fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
+	debug("Build log file path: %s" % fp)
 	# find build dir
 	build_dir = TemporaryDirectory()
 	debug("Build dir is %s" % build_dir.name)
 	# extract tarball
 	debug("Extracting aur tarball")
 	aurpkg.extract(build_dir.name)
-	# log files
-	fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
-	debug("Build log file path: %s" % fp)
 	with open(fp, "w") as fd:
 		try:
 			cwd = getcwd()
@@ -209,17 +216,17 @@ def build(config, localpkg, aurpkg):
 				end_time = time()
 				info("Commit duration: %.2fs" % (end_time - start_time))
 				fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
-
-			# register success
-			localpkg.lastbuild = time()
-			localpkg.lastmodified = aurpkg.lastmodified
 			status = True
 		except Exception as exp:
 			status = False
 		finally:
 			chdir(cwd)
-
-	# notify of success
+	# we have to register after chdir in the original directory
+	if status:
+		localpkg.lastsuccess = aurpkg.lastmodified
+	else:
+		localpkg.lastfailed = aurpkg.lastmodified
+	# notify
 	if "notify" in config:
 		send_report(config, localpkg, aurpkg, status, fp)
 
@@ -253,27 +260,32 @@ def event_loop(config_path, timeout):
 				continue
 			# checks update
 			debug("AUR last modified: %s" % aur.lastmodified)
-			debug("Local last modified: %s" % local.lastmodified)
-			debug("Local last build: %s" % local.lastbuild)
+			debug("Local last success lastmodified: %s" % local.lastbuild)
+			debug("Local last failed lastmodified: %s" % local.lastfailed)
+			debug("Local last build time: %s" % local.lastbuild)
 			# build new aur version
-			if aur.lastmodified > local.lastmodified:
+			if local.lastsuccess >= aur.lastmodified :
+				if "force" in config:
+					if config["force"].isdigit() is False:
+						warning("Invalid force value, ignore it")
+						continue
+					# if lastbuild not exists, it will be equal to 0
+					# too small to be > to time() even with big force time
+					now = int(time())
+					force = int(config["force"])
+					debug("Force at: %ss, currently: %ss" % (force, now - local.lastbuild))
+					if local.lastbuild + force <= now:
+						info("Forced update")
+						build(config, local, aur)
+					else:
+						info("Next forced update in %ss" % (now - local.lastbuild - force))
+				else:
+					info("Up to date, nothing to do.")
+			elif local.lastfailed >= aur.lastmodified:
+				info("Last build has failed. We skip.")
+			else:
 				info("New version available: %s" % aur.version)
 				build(config, local, aur)
-			# re-build package when force time is passed
-			elif "force" in config:
-				if config["force"].isdigit() is False:
-					warning("Invalid force value, ignore it")
-					continue
-				# if lastbuild not exists, it will be equal to 0
-				# too small to be > to time() even with big force time
-				now = int(time())
-				force = int(config["force"])
-				debug("Force at: %ss, currently: %ss" % (force, now - local.lastbuild))
-				if local.lastbuild + force <= now:
-					info("Forced update")
-					build(config, local, aur)
-			else:
-				info("Nothing to do")
 		# night is coming, save cache
 		debug("waiting for %ds" % timeout)
 		sleep(timeout)
