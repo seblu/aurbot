@@ -50,6 +50,8 @@ ENVIRONMENT
 ===========
 *AURBOT_CONFIG* overrides the config file path (default is /etc/aurbot.conf)
 
+*AURBOT_DATADIR* overrides the data directory path (default is /var/lib/aurbot)
+
 
 SOURCES
 =======

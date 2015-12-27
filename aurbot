@@ -28,7 +28,7 @@ from email.utils import formatdate
 from json import load as jload, dump as jdump, loads as jloads
 from logging import debug, warning, info, error
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
-from os import chdir, environ, getcwd, mkdir
+from os import chdir, environ, getcwd, mkdir, makedirs
 from os.path import exists, join
 from signal import signal, SIGHUP
 from subprocess import Popen, check_call, DEVNULL, PIPE
@@ -37,13 +37,14 @@ from tarfile import open as tar
 from tempfile import TemporaryDirectory
 from time import sleep, time, strftime, localtime
 from urllib.request import urlopen, Request
-from xdg.BaseDirectory import save_config_path, save_data_path
 
 AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
 XDG_DIRECTORY = "aurbot"
+
 DEFAULT_CHECK_INTERVAL = 86400
 DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
+DEFAULT_DATA_DIR = "/var/lib/aurbot"
 
 ERR_USAGE = 1
 ERR_FATAL = 2
@@ -109,10 +110,9 @@ class LocalPackage(dict):
 
 	def __init__(self, name):
 		self.name = name
-		self.path = join(save_data_path(XDG_DIRECTORY), name)
+		self.path = join(environ.get("AURBOT_DATADIR", DEFAULT_DATA_DIR), name)
 		debug("local path is: %s" % self.path)
-		if not exists(self.path):
-			mkdir(self.path)
+		makedirs(self.path, exist_ok=True)
 
 	@property
 	def logdir(self):
