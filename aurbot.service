@@ -4,7 +4,7 @@ Description=AUR Builder Bot
 [Service]
 Type=notify
 User=aurbot
-ExecStart=/usr/bin/aurbot -d
+ExecStart=/usr/bin/aurbot
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Nice=10
 IOSchedulingClass=best-effort
