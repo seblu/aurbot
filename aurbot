@@ -355,7 +355,16 @@ def event_loop(config_path):
 		# len(next_checks) is 0 when there is no package configured
 		timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
 		debug("waiting for %ds" % timeout)
-		sleep(timeout)
+		try:
+			sleep(timeout)
+		except InterruptedError:
+			pass
+
+def sighup_handler(signum, frame):
+	info("SIGHUP received")
+	# since python 3.5 we need to raise an exception to prevent python to EINTR
+	# see https://www.python.org/dev/peps/pep-0475/
+	raise InterruptedError()
 
 def parse_argv():
 	'''Parse command line arguments'''
@@ -385,7 +394,7 @@ def main():
 		if geteuid() == 0:
 			raise Error("Do not run as root")
 		# use sighup to unblock sleep syscall
-		signal(SIGHUP, lambda signum, frame: info("SIGHUP received"))
+		signal(SIGHUP, sighup_handler)
 		# parse command line
 		args = parse_argv()
 		# tell to systemd we are ready
