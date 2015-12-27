@@ -120,34 +120,57 @@ class LocalPackage(dict):
 			mkdir(logdir)
 		return logdir
 
-	def getlastX(self, X):
+	def getlastX(self, X, cast=int, default=0):
+		filepath = join(self.path, X)
+		if not exists(filepath):
+			return default
 		try:
-			return int(open(join(self.path, X), "r").read())
+			return cast(open(filepath, "r").read())
 		except Exception as exp:
-			debug("Failed to read %s time: %s" % (X, exp))
-			return 0
+			debug("Failed to load %s: %s" % (X, exp))
+			return default
 
-	def setlastX(self, X, value):
-		try:
-			open(join(self.path, X), "w").write("%d\n" % value)
-		except Exception as exp:
-			error("Failed to save %s time: %s" % (X, exp))
+	def setlastX(self, X, value, cast=int):
+		#try:
+		open(join(self.path, X), "w").write("%s" % cast(value))
+		#except Exception as exp:
+		#	error("Failed to save %s: %s" % (X, exp))
 
 	# store the moment where the build was done locally
-	lastbuild = property(lambda x: LocalPackage.getlastX(x, "lastbuild"),
-						 lambda x, y: LocalPackage.setlastX(x, "lastbuild", y))
+	lastbuild = property(
+		lambda x: LocalPackage.getlastX(x, "lastbuild"),
+		lambda x, y: LocalPackage.setlastX(x, "lastbuild", y)
+	)
 	# store the aur lastmodified value of the last sucessful build
-	lastsuccess = property(lambda x: LocalPackage.getlastX(x, "lastsuccess"),
-						 lambda x, y: LocalPackage.setlastX(x, "lastsuccess", y))
+	lastsuccess = property(
+		lambda x: LocalPackage.getlastX(x, "lastsuccess"),
+		lambda x, y: LocalPackage.setlastX(x, "lastsuccess", y)
+	)
 	# store the aur lastmodified value of the last failed build
-	lastfailed = property(lambda x: LocalPackage.getlastX(x, "lastfailed"),
-						 lambda x, y: LocalPackage.setlastX(x, "lastfailed", y))
+	lastfailed = property(
+		lambda x: LocalPackage.getlastX(x, "lastfailed"),
+		lambda x, y: LocalPackage.setlastX(x, "lastfailed", y)
+	)
 	# store the last time we check the aur
-	lastchecked = property(lambda x: LocalPackage.getlastX(x, "lastchecked"),
-						 lambda x, y: LocalPackage.setlastX(x, "lastchecked", y))
+	lastchecked = property(
+		lambda x: LocalPackage.getlastX(x, "lastchecked"),
+		lambda x, y: LocalPackage.setlastX(x, "lastchecked", y)
+	)
+	# store the last maintainer for the package
+	lastmaintainer = property(
+		lambda x: LocalPackage.getlastX(x, "lastmaintainer", str, ""),
+		lambda x, y: LocalPackage.setlastX(x, "lastmaintainer", y, str)
+	)
 
-def send_report(config, localpkg, aurpkg, status, logfile):
+def send_message(msg):
+	proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
+	proc.stdin.write(msg.as_bytes())
+	proc.stdin.close()
+	proc.wait()
+
+def send_build_report(config, localpkg, aurpkg, status, logfile):
 	'''Send build notification'''
+	info("Send build report")
 	# generate message
 	msg = MIMEMultipart()
 	msg["Subject"] = "Build %s for %s %s" % (
@@ -155,17 +178,29 @@ def send_report(config, localpkg, aurpkg, status, logfile):
 	msg["From"] = "Aurbot"
 	msg["To"] = config["notify"]
 	msg["Date"] = formatdate(localtime=True)
-
 	# attach logfile
 	with open(logfile, "r") as fd:
 		mt = MIMEText(fd.read())
 	msg.attach(mt)
+	send_message(msg)
 
-	# send message
-	proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
-	proc.stdin.write(msg.as_bytes())
-	proc.stdin.close()
-	proc.wait()
+def send_maintainer_report(config, localpkg, aurpkg):
+	'''Send email to notify invalid maintainer'''
+	info("Send invalid maintainer report")
+	# generate message
+	msg = MIMEText(
+		"Maintainer for package %s is invalid.\r\n" % localpkg.name +
+		"He has probably changed. Check if the new one is trustworthy.\r\n"
+		"\r\n"
+		"Configured maintainer is %s.\r\n" % config.get("maintainer") +
+		"AUR maintainer is %s.\r\n" % aurpkg.maintainer +
+		"\r\n"
+		"Your aurbot configuration need to be updated!\r\n")
+	msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
+	msg["From"] = "Aurbot"
+	msg["To"] = config["notify"]
+	msg["Date"] = formatdate(localtime=True)
+	send_message(msg)
 
 def build(config, localpkg, aurpkg):
 	'''
@@ -232,7 +267,7 @@ def build(config, localpkg, aurpkg):
 		localpkg.lastfailed = aurpkg.lastmodified
 	# notify
 	if "notify" in config:
-		send_report(config, localpkg, aurpkg, status, fp)
+		send_build_report(config, localpkg, aurpkg, status, fp)
 
 def event_loop(config_path):
 	'''
@@ -271,10 +306,16 @@ def event_loop(config_path):
 			# For security, if the maintainer has changed we pass
 			maintainer = config.get("maintainer")
 			if maintainer != aur.maintainer:
-				error("Invalid maintainer for package %s" % name)
-				debug("registered maintainer: %s" % maintainer)
+				debug("Configured maintainer: %s" % maintainer)
 				debug("AUR maintainer: %s" % aur.maintainer)
+				debug("Last maintainer: %s" % local.lastmaintainer)
+				# we notify by mail if the aur has changed
+				if local.lastmaintainer != aur.maintainer:
+					send_maintainer_report(config, local, aur)
+				local.lastmaintainer = aur.maintainer
+				error("Invalid maintainer for package %s" % name)
 				continue
+			local.lastmaintainer = aur.maintainer
 			# checks update
 			debug("AUR last modified: %s" % aur.lastmodified)
 			debug("Local last success lastmodified: %s" % local.lastbuild)
