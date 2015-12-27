@@ -28,7 +28,7 @@ from email.utils import formatdate
 from json import load as jload, dump as jdump, loads as jloads
 from logging import debug, warning, info, error, critical
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
-from os import chdir, environ, getcwd, mkdir, makedirs
+from os import chdir, environ, getcwd, mkdir, makedirs, geteuid
 from os.path import exists, join
 from signal import signal, SIGHUP
 from subprocess import Popen, check_call, DEVNULL, PIPE
@@ -381,6 +381,9 @@ def main():
 		getLogger().addHandler(hdlr)
 		# Early debugging mode
 		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
+		# do not run as root
+		if geteuid() == 0:
+			raise Error("Do not run as root")
 		# use sighup to unblock sleep syscall
 		signal(SIGHUP, lambda signum, frame: info("SIGHUP received"))
 		# parse command line
