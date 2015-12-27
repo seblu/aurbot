@@ -26,7 +26,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from json import load as jload, dump as jdump, loads as jloads
-from logging import debug, warning, info, error
+from logging import debug, warning, info, error, critical
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir, makedirs
 from os.path import exists, join
@@ -46,10 +46,13 @@ DEFAULT_CHECK_INTERVAL = 86400
 DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
 DEFAULT_DATA_DIR = "/var/lib/aurbot"
 
-ERR_USAGE = 1
-ERR_FATAL = 2
-ERR_ABORT = 3
-ERR_UNKNOWN = 4
+class Error(BaseException):
+    """Error handling"""
+    ERR_USAGE = 1
+    ERR_ABORT = 2
+    ERR_CRITICAL = 3
+    ERR_UNKNOWN = 4
+
 
 class ABFormatter(Formatter):
 	'''
@@ -387,14 +390,17 @@ def main():
 		# while 42
 		event_loop(args.config)
 	except KeyboardInterrupt:
-		exit(ERR_ABORT)
+		exit(Error.ERR_ABORT)
+	except Error as exp:
+		critical(exp)
+		exit(Error.ERR_CRITICAL)
 	except Exception as exp:
-		error(exp)
+		critical(exp)
 		if getLogger().getEffectiveLevel() != DEBUG:
 			error("Unknown error. Please report it with --debug.")
 		else:
 			raise
-		exit(ERR_UNKNOWN)
+		exit(Error.ERR_UNKNOWN)
 
 if __name__ == '__main__':
 	main()
