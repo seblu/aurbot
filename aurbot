@@ -42,6 +42,7 @@ from xdg.BaseDirectory import save_config_path, save_data_path
 AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
 XDG_DIRECTORY = "aurbot"
+DEFAULT_CHECK_INTERVAL = 86400
 
 ERR_USAGE = 1
 ERR_FATAL = 2
@@ -141,6 +142,9 @@ class LocalPackage(dict):
 	# store the aur lastmodified value of the last failed build
 	lastfailed = property(lambda x: LocalPackage.getlastX(x, "lastfailed"),
 						 lambda x, y: LocalPackage.setlastX(x, "lastfailed", y))
+	# store the last time we check the aur
+	lastchecked = property(lambda x: LocalPackage.getlastX(x, "lastchecked"),
+						 lambda x, y: LocalPackage.setlastX(x, "lastchecked", y))
 
 def send_report(config, localpkg, aurpkg, status, logfile):
 	'''Send build notification'''
@@ -230,7 +234,7 @@ def build(config, localpkg, aurpkg):
 	if "notify" in config:
 		send_report(config, localpkg, aurpkg, status, fp)
 
-def event_loop(config_path, timeout):
+def event_loop(config_path):
 	'''
 	program roundabout
 	'''
@@ -238,6 +242,7 @@ def event_loop(config_path, timeout):
 		# parse package list
 		packages = ConfigParser()
 		packages.read(config_path)
+		next_checks = set()
 		for name, config in packages.items():
 			if name == "DEFAULT":
 				continue
@@ -245,12 +250,24 @@ def event_loop(config_path, timeout):
 			if "build_cmd" not in config:
 				error("build_cmd is missing in config file")
 				continue
+			local = LocalPackage(name)
+			check_interval = config.getint("check_interval", DEFAULT_CHECK_INTERVAL)
+			debug("Check interval is %ss" % check_interval)
+			check_delta = int(local.lastchecked - time() + check_interval)
+			debug("Check delta is %ss" % check_delta)
+			if check_delta > 0:
+				# next check is in the future
+				next_checks.add(check_delta)
+				info("Nothing to check. Next is planned in %ss" % check_delta)
+				continue
+			next_checks.add(check_interval)
+			# get remote data
 			try:
 				aur = AURPackage(name)
+				local.lastchecked = int(time())
 			except Exception as exp:
 				error("Unable to get AUR package info: %s" % exp)
 				continue
-			local = LocalPackage(name)
 			# For security, if the maintainer has changed we pass
 			maintainer = config.get("maintainer")
 			if maintainer != aur.maintainer:
@@ -266,6 +283,7 @@ def event_loop(config_path, timeout):
 			# build new aur version
 			if local.lastsuccess >= aur.lastmodified :
 				if "force" in config:
+					info("Up to date, but force value is present.")
 					if config["force"].isdigit() is False:
 						warning("Invalid force value, ignore it")
 						continue
@@ -273,12 +291,14 @@ def event_loop(config_path, timeout):
 					# too small to be > to time() even with big force time
 					now = int(time())
 					force = int(config["force"])
-					debug("Force at: %ss, currently: %ss" % (force, now - local.lastbuild))
-					if local.lastbuild + force <= now:
+					debug("Force is: %ss" % force)
+					force_delta = local.lastbuild - now + force
+					debug("Force Delta is: %ss" % force_delta)
+					if force_delta < 0:
 						info("Forced update")
 						build(config, local, aur)
 					else:
-						info("Next forced update in %ss" % (now - local.lastbuild - force))
+						info("Next forced update in %ss" % force_delta)
 				else:
 					info("Up to date, nothing to do.")
 			elif local.lastfailed >= aur.lastmodified:
@@ -286,7 +306,9 @@ def event_loop(config_path, timeout):
 			else:
 				info("New version available: %s" % aur.version)
 				build(config, local, aur)
-		# night is coming, save cache
+		# sleep until next check
+		# len(next_checks) is 0 when there is no package configured
+		timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
 		debug("waiting for %ds" % timeout)
 		sleep(timeout)
 
@@ -295,7 +317,6 @@ def parse_argv():
 	# load parser
 	parser = ArgumentParser()
 	parser.add_argument("-c", "--config", help="packages config file path")
-	parser.add_argument("-s", "--sleep", type=int, default=86400, help="sleep interval between checks")
 	parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
 	parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
 	# parse it!
@@ -323,7 +344,7 @@ def main():
 		# tell to systemd we are ready
 		notify("READY=1\n")
 		# while 42
-		event_loop(args.config, args.sleep)
+		event_loop(args.config)
 	except KeyboardInterrupt:
 		exit(ERR_ABORT)
 	except Exception as exp:
