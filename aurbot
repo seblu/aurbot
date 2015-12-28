@@ -206,11 +206,8 @@ def send_maintainer_report(config, localpkg, aurpkg):
 	msg["Date"] = formatdate(localtime=True)
 	send_message(msg)
 
-def build(config, localpkg, aurpkg):
-	'''
-	Build and commit a package
-	Notify if succeeded
-	'''
+def update(config, localpkg, aurpkg):
+	'''Update (build and commit) a package'''
 	# register the build
 	localpkg.lastbuild = time()
 	# log files
@@ -226,7 +223,6 @@ def build(config, localpkg, aurpkg):
 		try:
 			cwd = getcwd()
 			chdir("%s/%s" % (build_dir.name, aurpkg.name))
-
 			# build
 			info("Starting build command")
 			debug(config["build_cmd"])
@@ -237,12 +233,10 @@ def build(config, localpkg, aurpkg):
 				check_call(config["build_cmd"], stdin=DEVNULL, stdout=fd,
 					stderr=fd, shell=True, close_fds=True)
 			except Exception as exp:
-				error("Build command failure: %s" % exp)
-				raise
+				raise Exception("Build failure: %s" % str(exp)) from exp
 			end_time = time()
 			info("Build duration: %.2fs" % (end_time - start_time))
 			fd.write("Build duration: %.2fs\n" % (end_time - start_time))
-
 			# commit
 			if "commit_cmd" in config:
 				info("Starting commit command")
@@ -254,13 +248,13 @@ def build(config, localpkg, aurpkg):
 					check_call(config["commit_cmd"], stdin=DEVNULL, stdout=fd,
 						stderr=fd, shell=True, close_fds=True)
 				except Exception as exp:
-					error("Commit command failure: %s" % exp)
-					raise
+					raise Exception("Commit failure: %s" % str(exp)) from exp
 				end_time = time()
 				info("Commit duration: %.2fs" % (end_time - start_time))
 				fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
 			status = True
 		except Exception as exp:
+			error("Update failure: %s" % exp)
 			status = False
 		finally:
 			chdir(cwd)
@@ -341,7 +335,7 @@ def event_loop(config_path):
 					debug("Force Delta is: %ss" % force_delta)
 					if force_delta < 0:
 						info("Forced update")
-						build(config, local, aur)
+						update(config, local, aur)
 					else:
 						info("Next forced update in %ss" % force_delta)
 				else:
@@ -350,7 +344,7 @@ def event_loop(config_path):
 				info("Last build has failed. We skip.")
 			else:
 				info("New version available: %s" % aur.version)
-				build(config, local, aur)
+				update(config, local, aur)
 		# sleep until next check
 		# len(next_checks) is 0 when there is no package configured
 		timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
