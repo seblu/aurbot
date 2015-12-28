@@ -87,6 +87,8 @@ class AURPackage(dict):
 			raise Exception("Unknown AUR Backend version: %s" % d["version"])
 		if len(d["results"]) == 0:
 			raise Exception("No such package: %s" % name)
+		if d["results"]["PackageBase"] != name:
+			raise Exception("No such base package: %s" % name)
 		self._info = d["results"]
 
 	def __getattr__(self, name):
