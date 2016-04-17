@@ -11,7 +11,7 @@ url='https://github.com/seblu/aurbot'
 license=('GPL2')
 backup=('etc/aurbot.conf')
 makedepends=('python-distribute')
-depends=('python' 'systemd')
+depends=('systemd' 'python' 'python-systemd')
 optdepends=('devtools')
 install=aurbot.install
 
