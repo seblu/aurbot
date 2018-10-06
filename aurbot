@@ -47,11 +47,11 @@ DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
 DEFAULT_DATA_DIR = "/var/lib/aurbot"
 
 class Error(BaseException):
-    """Error handling"""
-    ERR_USAGE = 1
-    ERR_ABORT = 2
-    ERR_CRITICAL = 3
-    ERR_UNKNOWN = 4
+	"""Error handling"""
+	ERR_USAGE = 1
+	ERR_ABORT = 2
+	ERR_CRITICAL = 3
+	ERR_UNKNOWN = 4
 
 
 class ABFormatter(Formatter):
