@@ -3,6 +3,7 @@ build_cmd = seblu-build
 commit_cmd = seblu-push
 check_interval = 86400
 timeout = 30
+from = noreply@example.com
 notify = seblu@example.com
 
 [virtualbox-ext-oracle]

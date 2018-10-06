@@ -1,5 +1,6 @@
 [DEFAULT]
 build_cmd = makepkg
+from = noreply@seblu.net
 notify = seblu@seblu.net
 
 [python-sjrpc]

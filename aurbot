@@ -181,7 +181,7 @@ def send_build_report(config, localpkg, aurpkg, status, logfile):
 	msg = MIMEMultipart()
 	msg["Subject"] = "Build %s for %s %s" % (
 		"successful" if status else "failure", localpkg.name, aurpkg.version)
-	msg["From"] = "Aurbot"
+	msg["From"] = config.get("from", "Aurbot")
 	msg["To"] = config["notify"]
 	msg["Date"] = formatdate(localtime=True)
 	# attach logfile
@@ -203,7 +203,7 @@ def send_maintainer_report(config, localpkg, aurpkg):
 		"\r\n"
 		"Your aurbot configuration need to be updated!\r\n")
 	msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
-	msg["From"] = "Aurbot"
+	msg["From"] = config.get("from", "Aurbot")
 	msg["To"] = config["notify"]
 	msg["Date"] = formatdate(localtime=True)
 	send_message(msg)
