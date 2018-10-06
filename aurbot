@@ -188,6 +188,7 @@ def send_build_report(config, localpkg, aurpkg, status, logfile):
 	with open(logfile, "r") as fd:
 		mt = MIMEText(fd.read())
 	msg.attach(mt)
+	debug(msg)
 	send_message(msg)
 
 def send_maintainer_report(config, localpkg, aurpkg):
@@ -206,6 +207,7 @@ def send_maintainer_report(config, localpkg, aurpkg):
 	msg["From"] = config.get("from", "Aurbot")
 	msg["To"] = config["notify"]
 	msg["Date"] = formatdate(localtime=True)
+	debug(msg)
 	send_message(msg)
 
 def update(config, localpkg, aurpkg):
