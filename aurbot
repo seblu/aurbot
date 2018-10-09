@@ -318,83 +318,83 @@ class Aurbot(object):
 		''' start the bot loop
 		'''
 		while True:
-			# reload package list
-			self.parse_config()
-			next_checks = set()
-			for pkgname, pkgconfig in self.config.items():
-				if pkgname == "DEFAULT":
-					continue
-				info("[%s]" % pkgname)
-				if "build_cmd" not in pkgconfig:
-					error("build_cmd is missing in config file")
-					continue
-				local = LocalPackage(pkgname)
-				check_interval = pkgconfig.getint("check_interval", DEFAULT_CHECK_INTERVAL)
-				debug("Check interval is %ss" % check_interval)
-				check_delta = int(local.lastchecked - time() + check_interval)
-				debug("Check delta is %ss" % check_delta)
-				if check_delta > 0:
-					# next check is in the future
-					next_checks.add(check_delta)
-					info("Nothing to check. Next is planned in %ss" % check_delta)
-					continue
-				next_checks.add(check_interval)
-				# get remote data
-				try:
-					aur = AURPackage(pkgname, pkgconfig.getint("timeout"))
-					local.lastchecked = int(time())
-				except Exception as exp:
-					error("Unable to get AUR package info: %s" % exp)
-					continue
-				# For security, if the maintainer has changed we pass
-				maintainer = pkgconfig.get("maintainer")
-				if maintainer != aur.maintainer:
-					debug("Configured maintainer: %s" % maintainer)
-					debug("AUR maintainer: %s" % aur.maintainer)
-					debug("Last maintainer: %s" % local.lastmaintainer)
-					# we notify by mail if the aur has changed
-					if local.lastmaintainer != aur.maintainer:
-						self.send_maintainer_report(pkgconfig, local, aur)
-					local.lastmaintainer = aur.maintainer
-					error("Invalid maintainer for package %s" % pkgname)
-					continue
-				local.lastmaintainer = aur.maintainer
-				# checks update
-				debug("AUR last modified: %s" % aur.lastmodified)
-				debug("Local last success lastmodified: %s" % local.lastbuild)
-				debug("Local last failed lastmodified: %s" % local.lastfailed)
-				debug("Local last build time: %s" % local.lastbuild)
-				# build new aur version
-				if local.lastsuccess >= aur.lastmodified :
-					if "force" in pkgconfig:
-						info("Up to date, but force value is present.")
-						if pkgconfig["force"].isdigit() is False:
-							warning("Invalid force value, ignore it")
-							continue
-						# if lastbuild not exists, it will be equal to 0
-						# too small to be > to time() even with big force time
-						now = int(time())
-						force = int(pkgconfig["force"])
-						debug("Force is: %ss" % force)
-						force_delta = local.lastbuild - now + force
-						debug("Force Delta is: %ss" % force_delta)
-						if force_delta < 0:
-							info("Forced update")
-							self.update(pkgconfig, local, aur)
-						else:
-							info("Next forced update in %ss" % force_delta)
-					else:
-						info("Up to date, nothing to do.")
-				elif local.lastfailed >= aur.lastmodified:
-					info("Last build has failed. We skip.")
-				else:
-					info("New version available: %s" % aur.version)
-					self.update(pkgconfig, local, aur)
-			# sleep until next check
-			# len(next_checks) is 0 when there is no package configured
-			timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
-			debug("waiting for %ds" % timeout)
 			try:
+				# reload package list
+				self.parse_config()
+				next_checks = set()
+				for pkgname, pkgconfig in self.config.items():
+					if pkgname == "DEFAULT":
+						continue
+					info("[%s]" % pkgname)
+					if "build_cmd" not in pkgconfig:
+						error("build_cmd is missing in config file")
+						continue
+					local = LocalPackage(pkgname)
+					check_interval = pkgconfig.getint("check_interval", DEFAULT_CHECK_INTERVAL)
+					debug("Check interval is %ss" % check_interval)
+					check_delta = int(local.lastchecked - time() + check_interval)
+					debug("Check delta is %ss" % check_delta)
+					if check_delta > 0:
+						# next check is in the future
+						next_checks.add(check_delta)
+						info("Nothing to check. Next is planned in %ss" % check_delta)
+						continue
+					next_checks.add(check_interval)
+					# get remote data
+					try:
+						aur = AURPackage(pkgname, pkgconfig.getint("timeout"))
+						local.lastchecked = int(time())
+					except Exception as exp:
+						error("Unable to get AUR package info: %s" % exp)
+						continue
+					# For security, if the maintainer has changed we pass
+					maintainer = pkgconfig.get("maintainer")
+					if maintainer != aur.maintainer:
+						debug("Configured maintainer: %s" % maintainer)
+						debug("AUR maintainer: %s" % aur.maintainer)
+						debug("Last maintainer: %s" % local.lastmaintainer)
+						# we notify by mail if the aur has changed
+						if local.lastmaintainer != aur.maintainer:
+							self.send_maintainer_report(pkgconfig, local, aur)
+						local.lastmaintainer = aur.maintainer
+						error("Invalid maintainer for package %s" % pkgname)
+						continue
+					local.lastmaintainer = aur.maintainer
+					# checks update
+					debug("AUR last modified: %s" % aur.lastmodified)
+					debug("Local last success lastmodified: %s" % local.lastbuild)
+					debug("Local last failed lastmodified: %s" % local.lastfailed)
+					debug("Local last build time: %s" % local.lastbuild)
+					# build new aur version
+					if local.lastsuccess >= aur.lastmodified :
+						if "force" in pkgconfig:
+							info("Up to date, but force value is present.")
+							if pkgconfig["force"].isdigit() is False:
+								warning("Invalid force value, ignore it")
+								continue
+							# if lastbuild not exists, it will be equal to 0
+							# too small to be > to time() even with big force time
+							now = int(time())
+							force = int(pkgconfig["force"])
+							debug("Force is: %ss" % force)
+							force_delta = local.lastbuild - now + force
+							debug("Force Delta is: %ss" % force_delta)
+							if force_delta < 0:
+								info("Forced update")
+								self.update(pkgconfig, local, aur)
+							else:
+								info("Next forced update in %ss" % force_delta)
+						else:
+							info("Up to date, nothing to do.")
+					elif local.lastfailed >= aur.lastmodified:
+						info("Last build has failed. We skip.")
+					else:
+						info("New version available: %s" % aur.version)
+						self.update(pkgconfig, local, aur)
+				# sleep until next check
+				# len(next_checks) is 0 when there is no package configured
+				timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
+				debug("waiting for %ds" % timeout)
 				sleep(timeout)
 			except InterruptedError:
 				pass
