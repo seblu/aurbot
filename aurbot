@@ -29,7 +29,7 @@ from json import load as jload, dump as jdump, loads as jloads
 from logging import debug, warning, info, error, critical
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir, makedirs, geteuid, stat
-from os.path import exists, join
+from os.path import exists, join, abspath
 from signal import signal, SIGHUP
 from subprocess import Popen, check_call, DEVNULL, PIPE
 from systemd.daemon import notify
@@ -175,7 +175,7 @@ class Aurbot(object):
 	def __init__(self, path):
 		''' initialize the bot
 		'''
-		self.init_config(path)
+		self.init_config(abspath(path))
 		self.parse_config()
 
 	def init_config(self, path=None):
