@@ -31,6 +31,7 @@ from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir, makedirs, geteuid, stat
 from os.path import exists, join, abspath
 from signal import signal, SIGHUP
+from smtplib import SMTP, SMTP_SSL, SMTPException
 from subprocess import Popen, check_call, DEVNULL, PIPE
 from systemd.daemon import notify
 from tarfile import open as tar
@@ -207,12 +208,39 @@ class Aurbot(object):
 				debug("Unable to parse config file, empty one used: %s" % str(exp))
 			info("Config file loaded %s" % self.config_path)
 
-	def send_message(self, msg):
+	def send_message(self, pkgconfig, msg):
+		''' Send message to an smtp server
+		'''
+		info("Sending message to %s" % pkgconfig["notify"])
+		# load smtp info
+		try:
+			smtp_host = pkgconfig["smtp_host"]
+			smtp_port = pkgconfig["smtp_port"]
+			smtp_login = pkgconfig.get("smtp_login", "")
+			smtp_pass = pkgconfig.get("smtp_pass", "")
+			smtp_security = pkgconfig.get("smtp_security", "")
+		except:
+			error("Unable to load smtp config")
+			return
+		# display message content when debug
 		debug(msg)
-		proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
-		proc.stdin.write(msg.as_bytes())
-		proc.stdin.close()
-		proc.wait()
+		# prepare connection
+		con = SMTP_SSL() if smtp_security == "ssl" else SMTP()
+		if getLogger().isEnabledFor(DEBUG):
+			con.set_debuglevel(True)
+		con._host = smtp_host
+		try:
+			con.connect(smtp_host, smtp_port)
+			if smtp_security == "starttls":
+				con.starttls()
+			if smtp_login != "" and smtp_pass != "":
+				con.login(smtp_login, smtp_pass)
+			# send it
+			con.send_message(msg)
+			# gentleman quit
+			con.quit()
+		except Exception as exp:
+			error("Unable to send message via smtp: %s" % str(exp))
 
 	def send_build_report(self, pkgconfig, localpkg, aurpkg, status, logfile):
 		''' Send build notification
@@ -231,7 +259,7 @@ class Aurbot(object):
 		with open(logfile, "r") as fd:
 			mt = MIMEText(fd.read())
 		msg.attach(mt)
-		self.send_message(msg)
+		self.send_message(pkgconfig, msg)
 
 	def send_maintainer_report(self, pkgconfig, localpkg, aurpkg):
 		''' Send email to notify invalid maintainer
@@ -250,7 +278,7 @@ class Aurbot(object):
 		msg["From"] = pkgconfig.get("from", "Aurbot")
 		msg["To"] = pkgconfig["notify"]
 		msg["Date"] = formatdate(localtime=True)
-		self.send_message(msg)
+		self.send_message(pkgconfig, msg)
 
 	def update(self, pkgconfig, localpkg, aurpkg):
 		''' Update (build and commit) a package

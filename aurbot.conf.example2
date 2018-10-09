@@ -1,7 +1,12 @@
 [DEFAULT]
 build_cmd = makepkg
-from = noreply@seblu.net
-notify = seblu@seblu.net
+from = noreply@example.com
+notify = seblu@example.com
+smtp_host = mail.example.com
+smtp_port = 587
+smtp_login = login@example.com
+smtp_pass = password
+smtp_security = starttls
 
 [python-sjrpc]
 maintainer = seblu
