@@ -205,6 +205,7 @@ class Aurbot(object):
 			except Exception as exp:
 				self.init_config()
 				debug("Unable to parse config file, empty one used: %s" % str(exp))
+			info("Config file loaded %s" % self.config_path)
 
 	def send_message(self, msg):
 		debug(msg)
