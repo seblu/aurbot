@@ -28,7 +28,7 @@ from email.utils import formatdate
 from json import load as jload, dump as jdump, loads as jloads
 from logging import debug, warning, info, error, critical
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
-from os import chdir, environ, getcwd, mkdir, makedirs, geteuid
+from os import chdir, environ, getcwd, mkdir, makedirs, geteuid, stat
 from os.path import exists, join
 from signal import signal, SIGHUP
 from subprocess import Popen, check_call, DEVNULL, PIPE
@@ -168,194 +168,236 @@ class LocalPackage(dict):
 		lambda x, y: LocalPackage.setlastX(x, "lastmaintainer", y, str)
 	)
 
-def send_message(msg):
-	debug(msg)
-	proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
-	proc.stdin.write(msg.as_bytes())
-	proc.stdin.close()
-	proc.wait()
+class Aurbot(object):
+	''' AUR Bot data and methods
+	'''
 
-def send_build_report(config, localpkg, aurpkg, status, logfile):
-	'''Send build notification'''
-	info("Send build report")
-	# generate message
-	msg = MIMEMultipart()
-	msg["Subject"] = "Build %s for %s %s" % (
-		"successful" if status else "failure", localpkg.name, aurpkg.version)
-	msg["From"] = config.get("from", "Aurbot")
-	msg["To"] = config["notify"]
-	msg["Date"] = formatdate(localtime=True)
-	# attach logfile
-	with open(logfile, "r") as fd:
-		mt = MIMEText(fd.read())
-	msg.attach(mt)
-	send_message(msg)
+	def __init__(self, path):
+		''' initialize the bot
+		'''
+		self.init_config(path)
+		self.parse_config()
 
-def send_maintainer_report(config, localpkg, aurpkg):
-	'''Send email to notify invalid maintainer'''
-	info("Send invalid maintainer report")
-	# generate message
-	msg = MIMEText(
-		"Maintainer for package %s is invalid.\r\n" % localpkg.name +
-		"He has probably changed. Check if the new one is trustworthy.\r\n"
-		"\r\n"
-		"Configured maintainer is %s.\r\n" % config.get("maintainer") +
-		"AUR maintainer is %s.\r\n" % aurpkg.maintainer +
-		"\r\n"
-		"Your aurbot configuration need to be updated!\r\n")
-	msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
-	msg["From"] = config.get("from", "Aurbot")
-	msg["To"] = config["notify"]
-	msg["Date"] = formatdate(localtime=True)
-	send_message(msg)
+	def init_config(self, path=None):
+		''' default value for configured
+		'''
+		if path is not None:
+			self.config_path = path
+		self.config_mtime = 0
+		self.config = ConfigParser()
 
-def update(config, localpkg, aurpkg):
-	'''Update (build and commit) a package'''
-	# register the build
-	localpkg.lastbuild = time()
-	# log files
-	fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
-	debug("Build log file path: %s" % fp)
-	# find build dir
-	build_dir = TemporaryDirectory()
-	debug("Build dir is %s" % build_dir.name)
-	# extract tarball
-	debug("Extracting aur tarball")
-	aurpkg.extract(build_dir.name)
-	with open(fp, "w") as fd:
+	def parse_config(self):
+		''' parse the config file
+		'''
+		# get the modification time of the config file
 		try:
-			cwd = getcwd()
-			chdir("%s/%s" % (build_dir.name, aurpkg.name))
-			# build
-			info("Starting build command")
-			debug(config["build_cmd"])
-			fd.write("Build command: %s\n" % config["build_cmd"])
-			fd.flush()
-			start_time = time()
+			mtime = stat(self.config_path).st_mtime
+		except Exception as exp:
+			self.init_config()
+			debug("Unable to stat config file, empty one used: %s" % str(exp))
+			return
+		# reload only when file has been modified
+		if mtime > self.config_mtime:
+			self.config_mtime = mtime
+			self.config = ConfigParser()
 			try:
-				check_call(config["build_cmd"], stdin=DEVNULL, stdout=fd,
-					stderr=fd, shell=True, close_fds=True)
+				self.config.read(self.config_path)
 			except Exception as exp:
-				raise Exception("Build failure: %s" % str(exp)) from exp
-			end_time = time()
-			info("Build duration: %.2fs" % (end_time - start_time))
-			fd.write("Build duration: %.2fs\n" % (end_time - start_time))
-			# commit
-			if "commit_cmd" in config:
-				info("Starting commit command")
-				debug(config["commit_cmd"])
-				fd.write("Commit command: %s\n" % config["commit_cmd"])
+				self.init_config()
+				debug("Unable to parse config file, empty one used: %s" % str(exp))
+
+	def send_message(self, msg):
+		debug(msg)
+		proc = Popen(["sendmail", "-i", "-t"], stdin=PIPE, close_fds=True)
+		proc.stdin.write(msg.as_bytes())
+		proc.stdin.close()
+		proc.wait()
+
+	def send_build_report(self, pkgconfig, localpkg, aurpkg, status, logfile):
+		''' Send build notification
+		'''
+		if "notify" not in pkgconfig:
+			return
+		info("Send build report")
+		# generate message
+		msg = MIMEMultipart()
+		msg["Subject"] = "Build %s for %s %s" % (
+			"successful" if status else "failure", localpkg.name, aurpkg.version)
+		msg["From"] = pkgconfig.get("from", "Aurbot")
+		msg["To"] = pkgconfig["notify"]
+		msg["Date"] = formatdate(localtime=True)
+		# attach logfile
+		with open(logfile, "r") as fd:
+			mt = MIMEText(fd.read())
+		msg.attach(mt)
+		self.send_message(msg)
+
+	def send_maintainer_report(self, pkgconfig, localpkg, aurpkg):
+		''' Send email to notify invalid maintainer
+		'''
+		info("Send invalid maintainer report")
+		# generate message
+		msg = MIMEText(
+			"Maintainer for package %s is invalid.\r\n" % localpkg.name +
+			"He has probably changed. Check if the new one is trustworthy.\r\n"
+			"\r\n"
+			"Configured maintainer is %s.\r\n" % pkgconfig.get("maintainer") +
+			"AUR maintainer is %s.\r\n" % aurpkg.maintainer +
+			"\r\n"
+			"Your aurbot configuration need to be updated!\r\n")
+		msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
+		msg["From"] = pkgconfig.get("from", "Aurbot")
+		msg["To"] = pkgconfig["notify"]
+		msg["Date"] = formatdate(localtime=True)
+		self.send_message(msg)
+
+	def update(self, pkgconfig, localpkg, aurpkg):
+		''' Update (build and commit) a package
+		'''
+		# register the build
+		localpkg.lastbuild = time()
+		# log files
+		fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
+		debug("Build log file path: %s" % fp)
+		# find build dir
+		build_dir = TemporaryDirectory()
+		debug("Build dir is %s" % build_dir.name)
+		# extract tarball
+		debug("Extracting aur tarball")
+		aurpkg.extract(build_dir.name)
+		with open(fp, "w") as fd:
+			try:
+				cwd = getcwd()
+				chdir("%s/%s" % (build_dir.name, aurpkg.name))
+				# build
+				info("Starting build command")
+				debug(pkgconfig["build_cmd"])
+				fd.write("Build command: %s\n" % pkgconfig["build_cmd"])
 				fd.flush()
 				start_time = time()
 				try:
-					check_call(config["commit_cmd"], stdin=DEVNULL, stdout=fd,
+					check_call(pkgconfig["build_cmd"], stdin=DEVNULL, stdout=fd,
 						stderr=fd, shell=True, close_fds=True)
 				except Exception as exp:
-					raise Exception("Commit failure: %s" % str(exp)) from exp
+					raise Exception("Build failure: %s" % str(exp)) from exp
 				end_time = time()
-				info("Commit duration: %.2fs" % (end_time - start_time))
-				fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
-			status = True
-		except Exception as exp:
-			error("Update failure: %s" % exp)
-			status = False
-		finally:
-			chdir(cwd)
-	# we have to register after chdir in the original directory
-	if status:
-		localpkg.lastsuccess = aurpkg.lastmodified
-	else:
-		localpkg.lastfailed = aurpkg.lastmodified
-	# notify
-	if "notify" in config:
-		send_build_report(config, localpkg, aurpkg, status, fp)
-
-def event_loop(config_path):
-	'''
-	program roundabout
-	'''
-	while True:
-		# parse package list
-		packages = ConfigParser()
-		packages.read(config_path)
-		next_checks = set()
-		for name, config in packages.items():
-			if name == "DEFAULT":
-				continue
-			info("[%s]" % name)
-			if "build_cmd" not in config:
-				error("build_cmd is missing in config file")
-				continue
-			local = LocalPackage(name)
-			check_interval = config.getint("check_interval", DEFAULT_CHECK_INTERVAL)
-			debug("Check interval is %ss" % check_interval)
-			check_delta = int(local.lastchecked - time() + check_interval)
-			debug("Check delta is %ss" % check_delta)
-			if check_delta > 0:
-				# next check is in the future
-				next_checks.add(check_delta)
-				info("Nothing to check. Next is planned in %ss" % check_delta)
-				continue
-			next_checks.add(check_interval)
-			# get remote data
-			try:
-				aur = AURPackage(name, config.getint("timeout"))
-				local.lastchecked = int(time())
+				info("Build duration: %.2fs" % (end_time - start_time))
+				fd.write("Build duration: %.2fs\n" % (end_time - start_time))
+				# commit
+				if "commit_cmd" in pkgconfig:
+					info("Starting commit command")
+					debug(pkgconfig["commit_cmd"])
+					fd.write("Commit command: %s\n" % pkgconfig["commit_cmd"])
+					fd.flush()
+					start_time = time()
+					try:
+						check_call(pkgconfig["commit_cmd"], stdin=DEVNULL,
+						stdout=fd, stderr=fd, shell=True, close_fds=True)
+					except Exception as exp:
+						raise Exception("Commit failure: %s" % str(exp)) from exp
+					end_time = time()
+					info("Commit duration: %.2fs" % (end_time - start_time))
+					fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
+				status = True
 			except Exception as exp:
-				error("Unable to get AUR package info: %s" % exp)
-				continue
-			# For security, if the maintainer has changed we pass
-			maintainer = config.get("maintainer")
-			if maintainer != aur.maintainer:
-				debug("Configured maintainer: %s" % maintainer)
-				debug("AUR maintainer: %s" % aur.maintainer)
-				debug("Last maintainer: %s" % local.lastmaintainer)
-				# we notify by mail if the aur has changed
-				if local.lastmaintainer != aur.maintainer:
-					send_maintainer_report(config, local, aur)
+				error("Update failure: %s" % exp)
+				status = False
+			finally:
+				chdir(cwd)
+		# we have to register after chdir in the original directory
+		if status:
+			localpkg.lastsuccess = aurpkg.lastmodified
+		else:
+			localpkg.lastfailed = aurpkg.lastmodified
+		# notify
+		if "notify" in pkgconfig:
+			self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
+
+	def start(self):
+		''' start the bot loop
+		'''
+		while True:
+			# reload package list
+			self.parse_config()
+			next_checks = set()
+			for pkgname, pkgconfig in self.config.items():
+				if pkgname == "DEFAULT":
+					continue
+				info("[%s]" % pkgname)
+				if "build_cmd" not in pkgconfig:
+					error("build_cmd is missing in config file")
+					continue
+				local = LocalPackage(pkgname)
+				check_interval = pkgconfig.getint("check_interval", DEFAULT_CHECK_INTERVAL)
+				debug("Check interval is %ss" % check_interval)
+				check_delta = int(local.lastchecked - time() + check_interval)
+				debug("Check delta is %ss" % check_delta)
+				if check_delta > 0:
+					# next check is in the future
+					next_checks.add(check_delta)
+					info("Nothing to check. Next is planned in %ss" % check_delta)
+					continue
+				next_checks.add(check_interval)
+				# get remote data
+				try:
+					aur = AURPackage(pkgname, pkgconfig.getint("timeout"))
+					local.lastchecked = int(time())
+				except Exception as exp:
+					error("Unable to get AUR package info: %s" % exp)
+					continue
+				# For security, if the maintainer has changed we pass
+				maintainer = pkgconfig.get("maintainer")
+				if maintainer != aur.maintainer:
+					debug("Configured maintainer: %s" % maintainer)
+					debug("AUR maintainer: %s" % aur.maintainer)
+					debug("Last maintainer: %s" % local.lastmaintainer)
+					# we notify by mail if the aur has changed
+					if local.lastmaintainer != aur.maintainer:
+						self.send_maintainer_report(pkgconfig, local, aur)
+					local.lastmaintainer = aur.maintainer
+					error("Invalid maintainer for package %s" % pkgname)
+					continue
 				local.lastmaintainer = aur.maintainer
-				error("Invalid maintainer for package %s" % name)
-				continue
-			local.lastmaintainer = aur.maintainer
-			# checks update
-			debug("AUR last modified: %s" % aur.lastmodified)
-			debug("Local last success lastmodified: %s" % local.lastbuild)
-			debug("Local last failed lastmodified: %s" % local.lastfailed)
-			debug("Local last build time: %s" % local.lastbuild)
-			# build new aur version
-			if local.lastsuccess >= aur.lastmodified :
-				if "force" in config:
-					info("Up to date, but force value is present.")
-					if config["force"].isdigit() is False:
-						warning("Invalid force value, ignore it")
-						continue
-					# if lastbuild not exists, it will be equal to 0
-					# too small to be > to time() even with big force time
-					now = int(time())
-					force = int(config["force"])
-					debug("Force is: %ss" % force)
-					force_delta = local.lastbuild - now + force
-					debug("Force Delta is: %ss" % force_delta)
-					if force_delta < 0:
-						info("Forced update")
-						update(config, local, aur)
+				# checks update
+				debug("AUR last modified: %s" % aur.lastmodified)
+				debug("Local last success lastmodified: %s" % local.lastbuild)
+				debug("Local last failed lastmodified: %s" % local.lastfailed)
+				debug("Local last build time: %s" % local.lastbuild)
+				# build new aur version
+				if local.lastsuccess >= aur.lastmodified :
+					if "force" in pkgconfig:
+						info("Up to date, but force value is present.")
+						if pkgconfig["force"].isdigit() is False:
+							warning("Invalid force value, ignore it")
+							continue
+						# if lastbuild not exists, it will be equal to 0
+						# too small to be > to time() even with big force time
+						now = int(time())
+						force = int(pkgconfig["force"])
+						debug("Force is: %ss" % force)
+						force_delta = local.lastbuild - now + force
+						debug("Force Delta is: %ss" % force_delta)
+						if force_delta < 0:
+							info("Forced update")
+							self.update(pkgconfig, local, aur)
+						else:
+							info("Next forced update in %ss" % force_delta)
 					else:
-						info("Next forced update in %ss" % force_delta)
+						info("Up to date, nothing to do.")
+				elif local.lastfailed >= aur.lastmodified:
+					info("Last build has failed. We skip.")
 				else:
-					info("Up to date, nothing to do.")
-			elif local.lastfailed >= aur.lastmodified:
-				info("Last build has failed. We skip.")
-			else:
-				info("New version available: %s" % aur.version)
-				update(config, local, aur)
-		# sleep until next check
-		# len(next_checks) is 0 when there is no package configured
-		timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
-		debug("waiting for %ds" % timeout)
-		try:
-			sleep(timeout)
-		except InterruptedError:
-			pass
+					info("New version available: %s" % aur.version)
+					self.update(pkgconfig, local, aur)
+			# sleep until next check
+			# len(next_checks) is 0 when there is no package configured
+			timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
+			debug("waiting for %ds" % timeout)
+			try:
+				sleep(timeout)
+			except InterruptedError:
+				pass
+
 
 def sighup_handler(signum, frame):
 	info("SIGHUP received")
@@ -394,10 +436,12 @@ def main():
 		signal(SIGHUP, sighup_handler)
 		# parse command line
 		args = parse_argv()
+		# create the bot object
+		bot = Aurbot(args.config)
 		# tell to systemd we are ready
 		notify("READY=1\n")
-		# while 42
-		event_loop(args.config)
+		# start the bot
+		bot.start()
 	except KeyboardInterrupt:
 		exit(Error.ERR_ABORT)
 	except Error as exp:
