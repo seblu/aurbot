@@ -1,43 +1,48 @@
 #!/usr/bin/python3
 # coding: utf-8
 
-# aurbot - Archlinux User Repository Builder Bot
-# Copyright © 2018 Sébastien Luttringer
-#
-# Started, October 30th 2011
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+'''
+aurbot - Archlinux User Repository Builder Bot
+Copyright © 2020 Sébastien Luttringer
 
+Started, October 30th 2011
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+'''
+
+# standard imports
 from argparse import ArgumentParser
 from configparser import ConfigParser
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
-from json import load as jload, dump as jdump, loads as jloads
+from json import loads as jloads
 from logging import debug, warning, info, error, critical
 from logging import StreamHandler, getLogger, Formatter, DEBUG, INFO
 from os import chdir, environ, getcwd, mkdir, makedirs, geteuid, stat
 from os.path import exists, join, abspath
 from signal import signal, SIGHUP
-from smtplib import SMTP, SMTP_SSL, SMTPException
-from subprocess import Popen, check_call, DEVNULL, PIPE
-from systemd.daemon import notify
+from smtplib import SMTP, SMTP_SSL
+from subprocess import check_call, DEVNULL
 from tarfile import open as tar
 from tempfile import TemporaryDirectory
 from time import sleep, time, strftime, localtime
 from urllib.request import urlopen, Request
+
+# extra import
+from systemd.daemon import notify
 
 AUR_URL = 'https://aur.archlinux.org'
 USER_AGENT = "aurbot"
@@ -60,12 +65,12 @@ class ABFormatter(Formatter):
 	Customer logging formater
 	'''
 	def __init__(self, fmt="[%(levelname)s] %(msg)s"):
-		Formatter.__init__(self, fmt)
+		super().__init__(fmt)
 
 	def format(self, record):
 		format_orig = self._style._fmt
 		if record.levelno == INFO and getLogger(record.name).getEffectiveLevel() != DEBUG:
-			self._style._fmt =  "%(msg)s"
+			self._style._fmt = "%(msg)s"
 		result = Formatter.format(self, record)
 		self._style._fmt = format_orig
 		return result
@@ -77,6 +82,7 @@ class AURPackage(dict):
 	'''
 
 	def __init__(self, name, timeout=None):
+		super().__init__()
 		self.name = name
 		debug("getting %s aur infos" % self.name)
 		url = "%s/rpc.php?type=info&arg=%s" % (AUR_URL, name)
@@ -115,6 +121,7 @@ class LocalPackage(dict):
 	'''Local package data abstraction'''
 
 	def __init__(self, name):
+		super().__init__()
 		self.name = name
 		self.path = join(environ.get("AURBOT_DATADIR", DEFAULT_DATA_DIR), name)
 		debug("local path is: %s" % self.path)
@@ -122,12 +129,14 @@ class LocalPackage(dict):
 
 	@property
 	def logdir(self):
+		'''Return log files directory path'''
 		logdir = join(self.path, "log")
 		if not exists(logdir):
 			mkdir(logdir)
 		return logdir
 
 	def getlastX(self, X, cast=int, default=0):
+		'''Return saved value of X casted in cast'''
 		filepath = join(self.path, X)
 		if not exists(filepath):
 			return default
@@ -138,10 +147,8 @@ class LocalPackage(dict):
 			return default
 
 	def setlastX(self, X, value, cast=int):
-		#try:
+		'''Cast the value X in cast and save it to file named X'''
 		open(join(self.path, X), "w").write("%s" % cast(value))
-		#except Exception as exp:
-		#	error("Failed to save %s: %s" % (X, exp))
 
 	# store the moment where the build was done locally
 	lastbuild = property(
@@ -169,7 +176,8 @@ class LocalPackage(dict):
 		lambda x, y: LocalPackage.setlastX(x, "lastmaintainer", y, str)
 	)
 
-class Aurbot(object):
+
+class Aurbot():
 	''' AUR Bot data and methods
 	'''
 
@@ -396,7 +404,7 @@ class Aurbot(object):
 					debug("Local last failed lastmodified: %s" % localpkg.lastfailed)
 					debug("Local last build time: %s" % localpkg.lastbuild)
 					# check if package need to be updated
-					if localpkg.lastsuccess >= aurpkg.lastmodified :
+					if localpkg.lastsuccess >= aurpkg.lastmodified:
 						if "force" in pkgconfig:
 							info("Up to date, but force value is present.")
 							if pkgconfig["force"].isdigit() is False:
@@ -431,6 +439,7 @@ class Aurbot(object):
 
 
 def sighup_handler(signum, frame):
+	'''Handler for HUP signal (a.k.a reload)'''
 	info("SIGHUP received")
 	# since python 3.5 we need to raise an exception to prevent python to EINTR
 	# see https://www.python.org/dev/peps/pep-0475/
