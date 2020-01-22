@@ -343,13 +343,13 @@ class Aurbot(object):
 		'''
 		debug("Updating %s" % aurpkg.name)
 		# for security, if the maintainer is incorrect we fail
-		maintainer = pkgconfig.get("maintainer")
-		debug("Configured maintainer: %s" % maintainer)
+		debug("Configured maintainer: %s" % pkgconfig.get("maintainer"))
 		debug("AUR maintainer: %s" % aurpkg.maintainer)
 		debug("Last maintainer: %s" % localpkg.lastmaintainer)
-		if maintainer != aurpkg.maintainer:
+		# str is required to handle no maintainer as None string
+		if pkgconfig.get("maintainer") != str(aurpkg.maintainer):
 			# we notify by mail only once the maintainer is invalid
-			if localpkg.lastmaintainer != aurpkg.maintainer:
+			if localpkg.lastmaintainer != str(aurpkg.maintainer):
 				self.send_maintainer_report(pkgconfig, localpkg, aurpkg)
 				localpkg.lastmaintainer = aurpkg.maintainer
 			error("Invalid maintainer for package %s" % aurpkg.name)
