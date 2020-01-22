@@ -245,8 +245,6 @@ class Aurbot(object):
 	def send_build_report(self, pkgconfig, localpkg, aurpkg, status, logfile):
 		''' Send build notification
 		'''
-		if "notify" not in pkgconfig:
-			return
 		info("Send build report")
 		# generate message
 		msg = MIMEMultipart()
