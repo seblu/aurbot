@@ -45,455 +45,455 @@ from urllib.request import urlopen, Request
 from systemd.daemon import notify
 
 class Error(BaseException):
-	"""Error handling"""
-	ERR_USAGE = 1
-	ERR_ABORT = 2
-	ERR_CRITICAL = 3
-	ERR_UNKNOWN = 4
+  """Error handling"""
+  ERR_USAGE = 1
+  ERR_ABORT = 2
+  ERR_CRITICAL = 3
+  ERR_UNKNOWN = 4
 
 
 class ABFormatter(Formatter):
-	'''
-	Customer logging formater
-	'''
-	def __init__(self, fmt="[%(levelname)s] %(msg)s"):
-		super().__init__(fmt)
+  '''
+  Customer logging formater
+  '''
+  def __init__(self, fmt="[%(levelname)s] %(msg)s"):
+    super().__init__(fmt)
 
-	def format(self, record):
-		format_orig = self._style._fmt
-		if record.levelno == INFO and getLogger(record.name).getEffectiveLevel() != DEBUG:
-			self._style._fmt = "%(msg)s"
-		result = Formatter.format(self, record)
-		self._style._fmt = format_orig
-		return result
+  def format(self, record):
+    format_orig = self._style._fmt
+    if record.levelno == INFO and getLogger(record.name).getEffectiveLevel() != DEBUG:
+      self._style._fmt = "%(msg)s"
+    result = Formatter.format(self, record)
+    self._style._fmt = format_orig
+    return result
 
 
 class AURPackage(dict):
-	'''
-	Abstract AUR package action
-	'''
+  '''
+  Abstract AUR package action
+  '''
 
-	AUR_URL = 'https://aur.archlinux.org'
-	USER_AGENT = "aurbot"
+  AUR_URL = 'https://aur.archlinux.org'
+  USER_AGENT = "aurbot"
 
-	def __init__(self, name, timeout=None):
-		super().__init__()
-		self.name = name
-		debug("getting %s aur infos" % self.name)
-		url = "%s/rpc.php?type=info&arg=%s" % (self.AUR_URL, name)
-		url_req = Request(url, headers={"User-Agent": self.USER_AGENT})
-		debug("Requesting url: %s (timeout: %s)" % (url, timeout))
-		url_fd = urlopen(url_req, timeout=timeout)
-		d = jloads(url_fd.read().decode("utf-8"))
-		if d["version"] != 1:
-			raise Exception("Unknown AUR Backend version: %s" % d["version"])
-		if len(d["results"]) == 0:
-			raise Exception("No such package: %s" % name)
-		if d["results"]["PackageBase"] != name:
-			raise Exception("No such base package: %s" % name)
-		self._info = d["results"]
+  def __init__(self, name, timeout=None):
+    super().__init__()
+    self.name = name
+    debug("getting %s aur infos" % self.name)
+    url = "%s/rpc.php?type=info&arg=%s" % (self.AUR_URL, name)
+    url_req = Request(url, headers={"User-Agent": self.USER_AGENT})
+    debug("Requesting url: %s (timeout: %s)" % (url, timeout))
+    url_fd = urlopen(url_req, timeout=timeout)
+    d = jloads(url_fd.read().decode("utf-8"))
+    if d["version"] != 1:
+      raise Exception("Unknown AUR Backend version: %s" % d["version"])
+    if len(d["results"]) == 0:
+      raise Exception("No such package: %s" % name)
+    if d["results"]["PackageBase"] != name:
+      raise Exception("No such base package: %s" % name)
+    self._info = d["results"]
 
-	def __getattr__(self, name):
-		for k, v in self._info.items():
-			if name == k.lower():
-				return v
-		raise AttributeError()
+  def __getattr__(self, name):
+    for k, v in self._info.items():
+      if name == k.lower():
+        return v
+    raise AttributeError()
 
-	def __repr__(self):
-		return "%s %s" % (self.name, self.version)
+  def __repr__(self):
+    return "%s %s" % (self.name, self.version)
 
-	def extract(self, path):
-		'''
-		Extract aur source tarball inside a directory path
-		'''
-		fo = urlopen('%s/%s' % (self.AUR_URL, self.urlpath))
-		tarball = tar(mode='r|*', fileobj=fo)
-		tarball.extractall(path)
-		fo.close()
+  def extract(self, path):
+    '''
+    Extract aur source tarball inside a directory path
+    '''
+    fo = urlopen('%s/%s' % (self.AUR_URL, self.urlpath))
+    tarball = tar(mode='r|*', fileobj=fo)
+    tarball.extractall(path)
+    fo.close()
 
 
 class LocalPackage(dict):
-	'''Local package data abstraction'''
+  '''Local package data abstraction'''
 
-	DEFAULT_DATA_DIR = "/var/lib/aurbot"
+  DEFAULT_DATA_DIR = "/var/lib/aurbot"
 
-	def __init__(self, name):
-		super().__init__()
-		self.name = name
-		self.path = join(environ.get("AURBOT_DATADIR", self.DEFAULT_DATA_DIR), name)
-		debug("local path is: %s" % self.path)
-		makedirs(self.path, exist_ok=True)
+  def __init__(self, name):
+    super().__init__()
+    self.name = name
+    self.path = join(environ.get("AURBOT_DATADIR", self.DEFAULT_DATA_DIR), name)
+    debug("local path is: %s" % self.path)
+    makedirs(self.path, exist_ok=True)
 
-	@property
-	def logdir(self):
-		'''Return log files directory path'''
-		logdir = join(self.path, "log")
-		if not exists(logdir):
-			mkdir(logdir)
-		return logdir
+  @property
+  def logdir(self):
+    '''Return log files directory path'''
+    logdir = join(self.path, "log")
+    if not exists(logdir):
+      mkdir(logdir)
+    return logdir
 
-	def getlastX(self, X, cast=int, default=0):
-		'''Return saved value of X casted in cast'''
-		filepath = join(self.path, X)
-		if not exists(filepath):
-			return default
-		try:
-			return cast(open(filepath, "r").read())
-		except Exception as exp:
-			debug("Failed to load %s: %s" % (X, exp))
-			return default
+  def getlastX(self, X, cast=int, default=0):
+    '''Return saved value of X casted in cast'''
+    filepath = join(self.path, X)
+    if not exists(filepath):
+      return default
+    try:
+      return cast(open(filepath, "r").read())
+    except Exception as exp:
+      debug("Failed to load %s: %s" % (X, exp))
+      return default
 
-	def setlastX(self, X, value, cast=int):
-		'''Cast the value X in cast and save it to file named X'''
-		open(join(self.path, X), "w").write("%s" % cast(value))
+  def setlastX(self, X, value, cast=int):
+    '''Cast the value X in cast and save it to file named X'''
+    open(join(self.path, X), "w").write("%s" % cast(value))
 
-	# store the moment where the build was done locally
-	lastbuild = property(
-		lambda x: LocalPackage.getlastX(x, "lastbuild"),
-		lambda x, y: LocalPackage.setlastX(x, "lastbuild", y)
-	)
-	# store the aur lastmodified value of the last sucessful build
-	lastsuccess = property(
-		lambda x: LocalPackage.getlastX(x, "lastsuccess"),
-		lambda x, y: LocalPackage.setlastX(x, "lastsuccess", y)
-	)
-	# store the aur lastmodified value of the last failed build
-	lastfailed = property(
-		lambda x: LocalPackage.getlastX(x, "lastfailed"),
-		lambda x, y: LocalPackage.setlastX(x, "lastfailed", y)
-	)
-	# store the last time we check the aur
-	lastchecked = property(
-		lambda x: LocalPackage.getlastX(x, "lastchecked"),
-		lambda x, y: LocalPackage.setlastX(x, "lastchecked", y)
-	)
-	# store the last maintainer for the package
-	lastmaintainer = property(
-		lambda x: LocalPackage.getlastX(x, "lastmaintainer", str, ""),
-		lambda x, y: LocalPackage.setlastX(x, "lastmaintainer", y, str)
-	)
+  # store the moment where the build was done locally
+  lastbuild = property(
+    lambda x: LocalPackage.getlastX(x, "lastbuild"),
+    lambda x, y: LocalPackage.setlastX(x, "lastbuild", y)
+  )
+  # store the aur lastmodified value of the last sucessful build
+  lastsuccess = property(
+    lambda x: LocalPackage.getlastX(x, "lastsuccess"),
+    lambda x, y: LocalPackage.setlastX(x, "lastsuccess", y)
+  )
+  # store the aur lastmodified value of the last failed build
+  lastfailed = property(
+    lambda x: LocalPackage.getlastX(x, "lastfailed"),
+    lambda x, y: LocalPackage.setlastX(x, "lastfailed", y)
+  )
+  # store the last time we check the aur
+  lastchecked = property(
+    lambda x: LocalPackage.getlastX(x, "lastchecked"),
+    lambda x, y: LocalPackage.setlastX(x, "lastchecked", y)
+  )
+  # store the last maintainer for the package
+  lastmaintainer = property(
+    lambda x: LocalPackage.getlastX(x, "lastmaintainer", str, ""),
+    lambda x, y: LocalPackage.setlastX(x, "lastmaintainer", y, str)
+  )
 
 
 class Aurbot():
-	''' AUR Bot data and methods
-	'''
+  ''' AUR Bot data and methods
+  '''
 
-	DEFAULT_CHECK_INTERVAL = 86400
-	DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
+  DEFAULT_CHECK_INTERVAL = 86400
+  DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
 
-	def __init__(self, path):
-		''' initialize the bot
-		'''
-		self.init_config(abspath(path))
-		self.parse_config()
+  def __init__(self, path):
+    ''' initialize the bot
+    '''
+    self.init_config(abspath(path))
+    self.parse_config()
 
-	def init_config(self, path=None):
-		''' default value for configured
-		'''
-		if path is not None:
-			self.config_path = path
-		self.config_mtime = 0
-		self.config = ConfigParser()
+  def init_config(self, path=None):
+    ''' default value for configured
+    '''
+    if path is not None:
+      self.config_path = path
+    self.config_mtime = 0
+    self.config = ConfigParser()
 
-	def parse_config(self):
-		''' parse the config file
-		'''
-		# get the modification time of the config file
-		try:
-			mtime = stat(self.config_path).st_mtime
-		except Exception as exp:
-			self.init_config()
-			debug("Unable to stat config file, empty one used: %s" % str(exp))
-			return
-		# reload only when file has been modified
-		if mtime > self.config_mtime:
-			self.config_mtime = mtime
-			self.config = ConfigParser()
-			try:
-				self.config.read(self.config_path)
-			except Exception as exp:
-				self.init_config()
-				debug("Unable to parse config file, empty one used: %s" % str(exp))
-			info("Config file loaded %s" % self.config_path)
+  def parse_config(self):
+    ''' parse the config file
+    '''
+    # get the modification time of the config file
+    try:
+      mtime = stat(self.config_path).st_mtime
+    except Exception as exp:
+      self.init_config()
+      debug("Unable to stat config file, empty one used: %s" % str(exp))
+      return
+    # reload only when file has been modified
+    if mtime > self.config_mtime:
+      self.config_mtime = mtime
+      self.config = ConfigParser()
+      try:
+        self.config.read(self.config_path)
+      except Exception as exp:
+        self.init_config()
+        debug("Unable to parse config file, empty one used: %s" % str(exp))
+      info("Config file loaded %s" % self.config_path)
 
-	def send_message(self, pkgconfig, msg):
-		''' Send message to an smtp server
-		'''
-		info("Sending message to %s" % pkgconfig["notify"])
-		# load smtp info
-		try:
-			smtp_host = pkgconfig["smtp_host"]
-			smtp_port = pkgconfig["smtp_port"]
-			smtp_login = pkgconfig.get("smtp_login", "")
-			smtp_pass = pkgconfig.get("smtp_pass", "")
-			smtp_security = pkgconfig.get("smtp_security", "")
-		except:
-			error("Unable to load smtp config")
-			return
-		# display message content when debug
-		debug(msg)
-		# prepare connection
-		con = SMTP_SSL() if smtp_security == "ssl" else SMTP()
-		if getLogger().isEnabledFor(DEBUG):
-			con.set_debuglevel(True)
-		con._host = smtp_host
-		try:
-			con.connect(smtp_host, smtp_port)
-			if smtp_security == "starttls":
-				con.starttls()
-			if smtp_login != "" and smtp_pass != "":
-				con.login(smtp_login, smtp_pass)
-			# send it
-			con.send_message(msg)
-			# gentleman quit
-			con.quit()
-		except Exception as exp:
-			error("Unable to send message via smtp: %s" % str(exp))
+  def send_message(self, pkgconfig, msg):
+    ''' Send message to an smtp server
+    '''
+    info("Sending message to %s" % pkgconfig["notify"])
+    # load smtp info
+    try:
+      smtp_host = pkgconfig["smtp_host"]
+      smtp_port = pkgconfig["smtp_port"]
+      smtp_login = pkgconfig.get("smtp_login", "")
+      smtp_pass = pkgconfig.get("smtp_pass", "")
+      smtp_security = pkgconfig.get("smtp_security", "")
+    except:
+      error("Unable to load smtp config")
+      return
+    # display message content when debug
+    debug(msg)
+    # prepare connection
+    con = SMTP_SSL() if smtp_security == "ssl" else SMTP()
+    if getLogger().isEnabledFor(DEBUG):
+      con.set_debuglevel(True)
+    con._host = smtp_host
+    try:
+      con.connect(smtp_host, smtp_port)
+      if smtp_security == "starttls":
+        con.starttls()
+      if smtp_login != "" and smtp_pass != "":
+        con.login(smtp_login, smtp_pass)
+      # send it
+      con.send_message(msg)
+      # gentleman quit
+      con.quit()
+    except Exception as exp:
+      error("Unable to send message via smtp: %s" % str(exp))
 
-	def send_build_report(self, pkgconfig, localpkg, aurpkg, status, logfile):
-		''' Send build notification
-		'''
-		info("Send build report")
-		# generate message
-		msg = MIMEMultipart()
-		msg["Subject"] = "Build %s for %s %s" % (
-			"successful" if status else "failure", localpkg.name, aurpkg.version)
-		msg["From"] = pkgconfig.get("from", "Aurbot")
-		msg["To"] = pkgconfig["notify"]
-		msg["Date"] = formatdate(localtime=True)
-		# attach logfile
-		with open(logfile, "r") as fd:
-			mt = MIMEText(fd.read())
-		msg.attach(mt)
-		self.send_message(pkgconfig, msg)
+  def send_build_report(self, pkgconfig, localpkg, aurpkg, status, logfile):
+    ''' Send build notification
+    '''
+    info("Send build report")
+    # generate message
+    msg = MIMEMultipart()
+    msg["Subject"] = "Build %s for %s %s" % (
+      "successful" if status else "failure", localpkg.name, aurpkg.version)
+    msg["From"] = pkgconfig.get("from", "Aurbot")
+    msg["To"] = pkgconfig["notify"]
+    msg["Date"] = formatdate(localtime=True)
+    # attach logfile
+    with open(logfile, "r") as fd:
+      mt = MIMEText(fd.read())
+    msg.attach(mt)
+    self.send_message(pkgconfig, msg)
 
-	def send_maintainer_report(self, pkgconfig, localpkg, aurpkg):
-		''' Send email to notify invalid maintainer
-		'''
-		info("Send invalid maintainer report")
-		# generate message
-		msg = MIMEText(
-			"Maintainer for package %s is invalid.\r\n" % localpkg.name +
-			"He has probably changed. Check if the new one is trustworthy.\r\n"
-			"\r\n"
-			"Configured maintainer is %s.\r\n" % pkgconfig.get("maintainer") +
-			"AUR maintainer is %s.\r\n" % aurpkg.maintainer +
-			"\r\n"
-			"Your aurbot configuration need to be updated!\r\n")
-		msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
-		msg["From"] = pkgconfig.get("from", "Aurbot")
-		msg["To"] = pkgconfig["notify"]
-		msg["Date"] = formatdate(localtime=True)
-		self.send_message(pkgconfig, msg)
+  def send_maintainer_report(self, pkgconfig, localpkg, aurpkg):
+    ''' Send email to notify invalid maintainer
+    '''
+    info("Send invalid maintainer report")
+    # generate message
+    msg = MIMEText(
+      "Maintainer for package %s is invalid.\r\n" % localpkg.name +
+      "He has probably changed. Check if the new one is trustworthy.\r\n"
+      "\r\n"
+      "Configured maintainer is %s.\r\n" % pkgconfig.get("maintainer") +
+      "AUR maintainer is %s.\r\n" % aurpkg.maintainer +
+      "\r\n"
+      "Your aurbot configuration need to be updated!\r\n")
+    msg["Subject"] = "Invalid maintainer for %s" % localpkg.name
+    msg["From"] = pkgconfig.get("from", "Aurbot")
+    msg["To"] = pkgconfig["notify"]
+    msg["Date"] = formatdate(localtime=True)
+    self.send_message(pkgconfig, msg)
 
-	def build(self, pkgconfig, localpkg, aurpkg):
-		''' Build a package
-		'''
-		# register the build
-		localpkg.lastbuild = time()
-		# log files
-		fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
-		debug("Build log file path: %s" % fp)
-		# find build dir
-		build_dir = TemporaryDirectory()
-		debug("Build dir is %s" % build_dir.name)
-		# extract tarball
-		debug("Extracting aur tarball")
-		aurpkg.extract(build_dir.name)
-		with open(fp, "w") as fd:
-			cwd = getcwd()
-			try:
-				chdir("%s/%s" % (build_dir.name, aurpkg.name))
-				# build
-				info("Starting build command")
-				debug(pkgconfig["build_cmd"])
-				fd.write("Build command: %s\n" % pkgconfig["build_cmd"])
-				fd.flush()
-				start_time = time()
-				try:
-					check_call(pkgconfig["build_cmd"], stdin=DEVNULL, stdout=fd,
-						stderr=fd, shell=True, close_fds=True)
-				except Exception as exp:
-					raise Exception("Build failure: %s" % str(exp)) from exp
-				end_time = time()
-				info("Build duration: %.2fs" % (end_time - start_time))
-				fd.write("Build duration: %.2fs\n" % (end_time - start_time))
-				# commit
-				if "commit_cmd" in pkgconfig:
-					info("Starting commit command")
-					debug(pkgconfig["commit_cmd"])
-					fd.write("Commit command: %s\n" % pkgconfig["commit_cmd"])
-					fd.flush()
-					start_time = time()
-					try:
-						check_call(pkgconfig["commit_cmd"], stdin=DEVNULL,
-						stdout=fd, stderr=fd, shell=True, close_fds=True)
-					except Exception as exp:
-						raise Exception("Commit failure: %s" % str(exp)) from exp
-					end_time = time()
-					info("Commit duration: %.2fs" % (end_time - start_time))
-					fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
-				chdir(cwd)
-				# we have to register after chdir in the original directory
-				localpkg.lastsuccess = aurpkg.lastmodified
-				status = True
-			except Exception as exp:
-				error("Update failure: %s" % exp)
-				chdir(cwd)
-				# we have to register after chdir in the original directory
-				localpkg.lastfailed = aurpkg.lastmodified
-				status = False
-		if "notify" in pkgconfig:
-			self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
+  def build(self, pkgconfig, localpkg, aurpkg):
+    ''' Build a package
+    '''
+    # register the build
+    localpkg.lastbuild = time()
+    # log files
+    fp = join(localpkg.logdir, strftime("build-%Y-%m-%d-%H-%M-%S.log", localtime(time())))
+    debug("Build log file path: %s" % fp)
+    # find build dir
+    build_dir = TemporaryDirectory()
+    debug("Build dir is %s" % build_dir.name)
+    # extract tarball
+    debug("Extracting aur tarball")
+    aurpkg.extract(build_dir.name)
+    with open(fp, "w") as fd:
+      cwd = getcwd()
+      try:
+        chdir("%s/%s" % (build_dir.name, aurpkg.name))
+        # build
+        info("Starting build command")
+        debug(pkgconfig["build_cmd"])
+        fd.write("Build command: %s\n" % pkgconfig["build_cmd"])
+        fd.flush()
+        start_time = time()
+        try:
+          check_call(pkgconfig["build_cmd"], stdin=DEVNULL, stdout=fd,
+            stderr=fd, shell=True, close_fds=True)
+        except Exception as exp:
+          raise Exception("Build failure: %s" % str(exp)) from exp
+        end_time = time()
+        info("Build duration: %.2fs" % (end_time - start_time))
+        fd.write("Build duration: %.2fs\n" % (end_time - start_time))
+        # commit
+        if "commit_cmd" in pkgconfig:
+          info("Starting commit command")
+          debug(pkgconfig["commit_cmd"])
+          fd.write("Commit command: %s\n" % pkgconfig["commit_cmd"])
+          fd.flush()
+          start_time = time()
+          try:
+            check_call(pkgconfig["commit_cmd"], stdin=DEVNULL,
+            stdout=fd, stderr=fd, shell=True, close_fds=True)
+          except Exception as exp:
+            raise Exception("Commit failure: %s" % str(exp)) from exp
+          end_time = time()
+          info("Commit duration: %.2fs" % (end_time - start_time))
+          fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
+        chdir(cwd)
+        # we have to register after chdir in the original directory
+        localpkg.lastsuccess = aurpkg.lastmodified
+        status = True
+      except Exception as exp:
+        error("Update failure: %s" % exp)
+        chdir(cwd)
+        # we have to register after chdir in the original directory
+        localpkg.lastfailed = aurpkg.lastmodified
+        status = False
+    if "notify" in pkgconfig:
+      self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
 
-	def update(self, pkgconfig, localpkg, aurpkg):
-		''' Update (build and commit) a package
-		'''
-		debug("Updating %s" % aurpkg.name)
-		# for security, if the maintainer is incorrect we fail
-		debug("Configured maintainer: %s" % pkgconfig.get("maintainer"))
-		debug("AUR maintainer: %s" % aurpkg.maintainer)
-		debug("Last maintainer: %s" % localpkg.lastmaintainer)
-		# str is required to handle no maintainer as None string
-		if pkgconfig.get("maintainer") != str(aurpkg.maintainer):
-			# we notify by mail only once the maintainer is invalid
-			if localpkg.lastmaintainer != str(aurpkg.maintainer):
-				self.send_maintainer_report(pkgconfig, localpkg, aurpkg)
-				localpkg.lastmaintainer = aurpkg.maintainer
-			error("Invalid maintainer for package %s" % aurpkg.name)
-			return
-		localpkg.lastmaintainer = aurpkg.maintainer
-		self.build(pkgconfig, localpkg, aurpkg)
+  def update(self, pkgconfig, localpkg, aurpkg):
+    ''' Update (build and commit) a package
+    '''
+    debug("Updating %s" % aurpkg.name)
+    # for security, if the maintainer is incorrect we fail
+    debug("Configured maintainer: %s" % pkgconfig.get("maintainer"))
+    debug("AUR maintainer: %s" % aurpkg.maintainer)
+    debug("Last maintainer: %s" % localpkg.lastmaintainer)
+    # str is required to handle no maintainer as None string
+    if pkgconfig.get("maintainer") != str(aurpkg.maintainer):
+      # we notify by mail only once the maintainer is invalid
+      if localpkg.lastmaintainer != str(aurpkg.maintainer):
+        self.send_maintainer_report(pkgconfig, localpkg, aurpkg)
+        localpkg.lastmaintainer = aurpkg.maintainer
+      error("Invalid maintainer for package %s" % aurpkg.name)
+      return
+    localpkg.lastmaintainer = aurpkg.maintainer
+    self.build(pkgconfig, localpkg, aurpkg)
 
-	def start(self):
-		''' start the bot loop
-		'''
-		while True:
-			try:
-				# reload package list
-				self.parse_config()
-				next_checks = set()
-				for pkgname, pkgconfig in self.config.items():
-					if pkgname == "DEFAULT":
-						continue
-					info("[%s]" % pkgname)
-					if "build_cmd" not in pkgconfig:
-						error("build_cmd is missing in config file")
-						continue
-					localpkg = LocalPackage(pkgname)
-					check_interval = pkgconfig.getint("check_interval", self.DEFAULT_CHECK_INTERVAL)
-					debug("Check interval is %ss" % check_interval)
-					check_delta = int(localpkg.lastchecked - time() + check_interval)
-					debug("Check delta is %ss" % check_delta)
-					if check_delta > 0:
-						# next check is in the future
-						next_checks.add(check_delta)
-						info("Next check is planned in %ss" % check_delta)
-						continue
-					next_checks.add(check_interval)
-					# get remote data
-					try:
-						aurpkg = AURPackage(pkgname, pkgconfig.getint("timeout"))
-						localpkg.lastchecked = int(time())
-					except Exception as exp:
-						error("Unable to get AUR package info: %s" % exp)
-						continue
-					# few debug printing
-					debug("AUR last modified: %s" % aurpkg.lastmodified)
-					debug("Local last success lastmodified: %s" % localpkg.lastbuild)
-					debug("Local last failed lastmodified: %s" % localpkg.lastfailed)
-					debug("Local last build time: %s" % localpkg.lastbuild)
-					# check if package need to be updated
-					if localpkg.lastsuccess >= aurpkg.lastmodified:
-						if "force" in pkgconfig:
-							info("Up to date, but force value is present.")
-							if pkgconfig["force"].isdigit() is False:
-								warning("Invalid force value, ignore it")
-								continue
-							# if lastbuild not exists, it will be equal to 0
-							# too small to be > to time() even with big force time
-							now = int(time())
-							force = int(pkgconfig["force"])
-							debug("Force is: %ss" % force)
-							force_delta = localpkg.lastbuild - now + force
-							debug("Force Delta is: %ss" % force_delta)
-							if force_delta < 0:
-								info("Forced update")
-								self.update(pkgconfig, localpkg, aurpkg)
-							else:
-								info("Next forced update in %ss" % force_delta)
-						else:
-							info("Up to date, nothing to do.")
-					elif localpkg.lastfailed >= aurpkg.lastmodified:
-						warning("Last build has failed, skipping. Remove lastfailed file to retry.")
-					else:
-						info("New version available: %s" % aurpkg.version)
-						self.update(pkgconfig, localpkg, aurpkg)
-				# sleep until next check
-				# len(next_checks) is 0 when there is no package configured
-				timeout = min(next_checks) if len(next_checks) > 0 else self.DEFAULT_CHECK_INTERVAL
-				debug("waiting for %ds" % timeout)
-				sleep(timeout)
-			except InterruptedError:
-				pass
+  def start(self):
+    ''' start the bot loop
+    '''
+    while True:
+      try:
+        # reload package list
+        self.parse_config()
+        next_checks = set()
+        for pkgname, pkgconfig in self.config.items():
+          if pkgname == "DEFAULT":
+            continue
+          info("[%s]" % pkgname)
+          if "build_cmd" not in pkgconfig:
+            error("build_cmd is missing in config file")
+            continue
+          localpkg = LocalPackage(pkgname)
+          check_interval = pkgconfig.getint("check_interval", self.DEFAULT_CHECK_INTERVAL)
+          debug("Check interval is %ss" % check_interval)
+          check_delta = int(localpkg.lastchecked - time() + check_interval)
+          debug("Check delta is %ss" % check_delta)
+          if check_delta > 0:
+            # next check is in the future
+            next_checks.add(check_delta)
+            info("Next check is planned in %ss" % check_delta)
+            continue
+          next_checks.add(check_interval)
+          # get remote data
+          try:
+            aurpkg = AURPackage(pkgname, pkgconfig.getint("timeout"))
+            localpkg.lastchecked = int(time())
+          except Exception as exp:
+            error("Unable to get AUR package info: %s" % exp)
+            continue
+          # few debug printing
+          debug("AUR last modified: %s" % aurpkg.lastmodified)
+          debug("Local last success lastmodified: %s" % localpkg.lastbuild)
+          debug("Local last failed lastmodified: %s" % localpkg.lastfailed)
+          debug("Local last build time: %s" % localpkg.lastbuild)
+          # check if package need to be updated
+          if localpkg.lastsuccess >= aurpkg.lastmodified:
+            if "force" in pkgconfig:
+              info("Up to date, but force value is present.")
+              if pkgconfig["force"].isdigit() is False:
+                warning("Invalid force value, ignore it")
+                continue
+              # if lastbuild not exists, it will be equal to 0
+              # too small to be > to time() even with big force time
+              now = int(time())
+              force = int(pkgconfig["force"])
+              debug("Force is: %ss" % force)
+              force_delta = localpkg.lastbuild - now + force
+              debug("Force Delta is: %ss" % force_delta)
+              if force_delta < 0:
+                info("Forced update")
+                self.update(pkgconfig, localpkg, aurpkg)
+              else:
+                info("Next forced update in %ss" % force_delta)
+            else:
+              info("Up to date, nothing to do.")
+          elif localpkg.lastfailed >= aurpkg.lastmodified:
+            warning("Last build has failed, skipping. Remove lastfailed file to retry.")
+          else:
+            info("New version available: %s" % aurpkg.version)
+            self.update(pkgconfig, localpkg, aurpkg)
+        # sleep until next check
+        # len(next_checks) is 0 when there is no package configured
+        timeout = min(next_checks) if len(next_checks) > 0 else self.DEFAULT_CHECK_INTERVAL
+        debug("waiting for %ds" % timeout)
+        sleep(timeout)
+      except InterruptedError:
+        pass
 
 
 def sighup_handler(signum, frame):
-	'''Handler for HUP signal (a.k.a reload)'''
-	info("SIGHUP received")
-	# since python 3.5 we need to raise an exception to prevent python to EINTR
-	# see https://www.python.org/dev/peps/pep-0475/
-	raise InterruptedError()
+  '''Handler for HUP signal (a.k.a reload)'''
+  info("SIGHUP received")
+  # since python 3.5 we need to raise an exception to prevent python to EINTR
+  # see https://www.python.org/dev/peps/pep-0475/
+  raise InterruptedError()
 
 def parse_argv():
-	'''Parse command line arguments'''
-	# load parser
-	parser = ArgumentParser()
-	parser.add_argument("-c", "--config", help="config file path",
-		default=environ.get("AURBOT_CONFIG", self.DEFAULT_CONFIG_FILE))
-	parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
-	parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
-	# parse it!
-	args = parser.parse_args()
-	# set global debug mode
-	if args.debug:
-		getLogger().setLevel(DEBUG)
-	return args
+  '''Parse command line arguments'''
+  # load parser
+  parser = ArgumentParser()
+  parser.add_argument("-c", "--config", help="config file path",
+    default=environ.get("AURBOT_CONFIG", self.DEFAULT_CONFIG_FILE))
+  parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
+  parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
+  # parse it!
+  args = parser.parse_args()
+  # set global debug mode
+  if args.debug:
+    getLogger().setLevel(DEBUG)
+  return args
 
 def main():
-	'''Program entry point'''
-	try:
-		# set logger config
-		hdlr = StreamHandler()
-		hdlr.setFormatter(ABFormatter())
-		getLogger().addHandler(hdlr)
-		# Early debugging mode
-		getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
-		# do not run as root
-		if geteuid() == 0:
-			raise Error("Do not run as root")
-		# use sighup to unblock sleep syscall
-		signal(SIGHUP, sighup_handler)
-		# parse command line
-		args = parse_argv()
-		# create the bot object
-		bot = Aurbot(args.config)
-		# tell to systemd we are ready
-		notify("READY=1\n")
-		# start the bot
-		bot.start()
-	except KeyboardInterrupt:
-		exit(Error.ERR_ABORT)
-	except Error as exp:
-		critical(exp)
-		exit(Error.ERR_CRITICAL)
-	except Exception as exp:
-		critical(exp)
-		if getLogger().getEffectiveLevel() != DEBUG:
-			error("Unknown error. Please report it with --debug.")
-		else:
-			raise
-		exit(Error.ERR_UNKNOWN)
+  '''Program entry point'''
+  try:
+    # set logger config
+    hdlr = StreamHandler()
+    hdlr.setFormatter(ABFormatter())
+    getLogger().addHandler(hdlr)
+    # Early debugging mode
+    getLogger().setLevel(DEBUG if "AURBOT_DEBUG" in environ else INFO)
+    # do not run as root
+    if geteuid() == 0:
+      raise Error("Do not run as root")
+    # use sighup to unblock sleep syscall
+    signal(SIGHUP, sighup_handler)
+    # parse command line
+    args = parse_argv()
+    # create the bot object
+    bot = Aurbot(args.config)
+    # tell to systemd we are ready
+    notify("READY=1\n")
+    # start the bot
+    bot.start()
+  except KeyboardInterrupt:
+    exit(Error.ERR_ABORT)
+  except Error as exp:
+    critical(exp)
+    exit(Error.ERR_CRITICAL)
+  except Exception as exp:
+    critical(exp)
+    if getLogger().getEffectiveLevel() != DEBUG:
+      error("Unknown error. Please report it with --debug.")
+    else:
+      raise
+    exit(Error.ERR_UNKNOWN)
 
 if __name__ == '__main__':
-	main()
+  main()
