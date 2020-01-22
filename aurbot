@@ -44,14 +44,6 @@ from urllib.request import urlopen, Request
 # extra import
 from systemd.daemon import notify
 
-AUR_URL = 'https://aur.archlinux.org'
-USER_AGENT = "aurbot"
-XDG_DIRECTORY = "aurbot"
-
-DEFAULT_CHECK_INTERVAL = 86400
-DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
-DEFAULT_DATA_DIR = "/var/lib/aurbot"
-
 class Error(BaseException):
 	"""Error handling"""
 	ERR_USAGE = 1
@@ -81,12 +73,15 @@ class AURPackage(dict):
 	Abstract AUR package action
 	'''
 
+	AUR_URL = 'https://aur.archlinux.org'
+	USER_AGENT = "aurbot"
+
 	def __init__(self, name, timeout=None):
 		super().__init__()
 		self.name = name
 		debug("getting %s aur infos" % self.name)
-		url = "%s/rpc.php?type=info&arg=%s" % (AUR_URL, name)
-		url_req = Request(url, headers={"User-Agent": USER_AGENT})
+		url = "%s/rpc.php?type=info&arg=%s" % (self.AUR_URL, name)
+		url_req = Request(url, headers={"User-Agent": self.USER_AGENT})
 		debug("Requesting url: %s (timeout: %s)" % (url, timeout))
 		url_fd = urlopen(url_req, timeout=timeout)
 		d = jloads(url_fd.read().decode("utf-8"))
@@ -111,7 +106,7 @@ class AURPackage(dict):
 		'''
 		Extract aur source tarball inside a directory path
 		'''
-		fo = urlopen('%s/%s' % (AUR_URL, self.urlpath))
+		fo = urlopen('%s/%s' % (self.AUR_URL, self.urlpath))
 		tarball = tar(mode='r|*', fileobj=fo)
 		tarball.extractall(path)
 		fo.close()
@@ -120,10 +115,12 @@ class AURPackage(dict):
 class LocalPackage(dict):
 	'''Local package data abstraction'''
 
+	DEFAULT_DATA_DIR = "/var/lib/aurbot"
+
 	def __init__(self, name):
 		super().__init__()
 		self.name = name
-		self.path = join(environ.get("AURBOT_DATADIR", DEFAULT_DATA_DIR), name)
+		self.path = join(environ.get("AURBOT_DATADIR", self.DEFAULT_DATA_DIR), name)
 		debug("local path is: %s" % self.path)
 		makedirs(self.path, exist_ok=True)
 
@@ -180,6 +177,9 @@ class LocalPackage(dict):
 class Aurbot():
 	''' AUR Bot data and methods
 	'''
+
+	DEFAULT_CHECK_INTERVAL = 86400
+	DEFAULT_CONFIG_FILE = "/etc/aurbot.conf"
 
 	def __init__(self, path):
 		''' initialize the bot
@@ -381,7 +381,7 @@ class Aurbot():
 						error("build_cmd is missing in config file")
 						continue
 					localpkg = LocalPackage(pkgname)
-					check_interval = pkgconfig.getint("check_interval", DEFAULT_CHECK_INTERVAL)
+					check_interval = pkgconfig.getint("check_interval", self.DEFAULT_CHECK_INTERVAL)
 					debug("Check interval is %ss" % check_interval)
 					check_delta = int(localpkg.lastchecked - time() + check_interval)
 					debug("Check delta is %ss" % check_delta)
@@ -431,7 +431,7 @@ class Aurbot():
 						self.update(pkgconfig, localpkg, aurpkg)
 				# sleep until next check
 				# len(next_checks) is 0 when there is no package configured
-				timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
+				timeout = min(next_checks) if len(next_checks) > 0 else self.DEFAULT_CHECK_INTERVAL
 				debug("waiting for %ds" % timeout)
 				sleep(timeout)
 			except InterruptedError:
@@ -450,7 +450,7 @@ def parse_argv():
 	# load parser
 	parser = ArgumentParser()
 	parser.add_argument("-c", "--config", help="config file path",
-		default=environ.get("AURBOT_CONFIG", DEFAULT_CONFIG_FILE))
+		default=environ.get("AURBOT_CONFIG", self.DEFAULT_CONFIG_FILE))
 	parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
 	parser.epilog = "You could set $XDG_DATA_HOME to change the path of the local package cache."
 	# parse it!
