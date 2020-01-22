@@ -280,8 +280,8 @@ class Aurbot(object):
 		msg["Date"] = formatdate(localtime=True)
 		self.send_message(pkgconfig, msg)
 
-	def update(self, pkgconfig, localpkg, aurpkg):
-		''' Update (build and commit) a package
+	def build(self, pkgconfig, localpkg, aurpkg):
+		''' Build a package
 		'''
 		# register the build
 		localpkg.lastbuild = time()
@@ -295,8 +295,8 @@ class Aurbot(object):
 		debug("Extracting aur tarball")
 		aurpkg.extract(build_dir.name)
 		with open(fp, "w") as fd:
+			cwd = getcwd()
 			try:
-				cwd = getcwd()
 				chdir("%s/%s" % (build_dir.name, aurpkg.name))
 				# build
 				info("Starting build command")
@@ -327,18 +327,35 @@ class Aurbot(object):
 					end_time = time()
 					info("Commit duration: %.2fs" % (end_time - start_time))
 					fd.write("Commit duration: %.2fs\n" % (end_time - start_time))
-				status = True
+				chdir(cwd)
+				# we have to register after chdir in the original directory
+				localpkg.lastsuccess = aurpkg.lastmodified
+				return True
 			except Exception as exp:
 				error("Update failure: %s" % exp)
-				status = False
-			finally:
 				chdir(cwd)
-		# we have to register after chdir in the original directory
-		if status:
-			localpkg.lastsuccess = aurpkg.lastmodified
-		else:
-			localpkg.lastfailed = aurpkg.lastmodified
-		# notify
+				# we have to register after chdir in the original directory
+				localpkg.lastfailed = aurpkg.lastmodified
+				return False
+
+	def update(self, pkgconfig, localpkg, aurpkg):
+		''' Update (build and commit) a package
+		'''
+		debug("Updating %s" % aurpkg.name)
+		# for security, if the maintainer is incorrect we fail
+		maintainer = pkgconfig.get("maintainer")
+		debug("Configured maintainer: %s" % maintainer)
+		debug("AUR maintainer: %s" % aurpkg.maintainer)
+		debug("Last maintainer: %s" % localpkg.lastmaintainer)
+		if maintainer != aurpkg.maintainer:
+			# we notify by mail only once the maintainer is invalid
+			if localpkg.lastmaintainer != aurpkg.maintainer:
+				self.send_maintainer_report(pkgconfig, localpkg, aurpkg)
+				localpkg.lastmaintainer = aurpkg.maintainer
+			error("Invalid maintainer for package %s" % aurpkg.name)
+			return
+		localpkg.lastmaintainer = aurpkg.maintainer
+		status = self.build(pkgconfig, localpkg, aurpkg)
 		if "notify" in pkgconfig:
 			self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
 
@@ -357,10 +374,10 @@ class Aurbot(object):
 					if "build_cmd" not in pkgconfig:
 						error("build_cmd is missing in config file")
 						continue
-					local = LocalPackage(pkgname)
+					localpkg = LocalPackage(pkgname)
 					check_interval = pkgconfig.getint("check_interval", DEFAULT_CHECK_INTERVAL)
 					debug("Check interval is %ss" % check_interval)
-					check_delta = int(local.lastchecked - time() + check_interval)
+					check_delta = int(localpkg.lastchecked - time() + check_interval)
 					debug("Check delta is %ss" % check_delta)
 					if check_delta > 0:
 						# next check is in the future
@@ -370,31 +387,18 @@ class Aurbot(object):
 					next_checks.add(check_interval)
 					# get remote data
 					try:
-						aur = AURPackage(pkgname, pkgconfig.getint("timeout"))
-						local.lastchecked = int(time())
+						aurpkg = AURPackage(pkgname, pkgconfig.getint("timeout"))
+						localpkg.lastchecked = int(time())
 					except Exception as exp:
 						error("Unable to get AUR package info: %s" % exp)
 						continue
-					# For security, if the maintainer has changed we pass
-					maintainer = pkgconfig.get("maintainer")
-					if maintainer != aur.maintainer:
-						debug("Configured maintainer: %s" % maintainer)
-						debug("AUR maintainer: %s" % aur.maintainer)
-						debug("Last maintainer: %s" % local.lastmaintainer)
-						# we notify by mail if the aur has changed
-						if local.lastmaintainer != aur.maintainer:
-							self.send_maintainer_report(pkgconfig, local, aur)
-						local.lastmaintainer = aur.maintainer
-						error("Invalid maintainer for package %s" % pkgname)
-						continue
-					local.lastmaintainer = aur.maintainer
-					# checks update
-					debug("AUR last modified: %s" % aur.lastmodified)
-					debug("Local last success lastmodified: %s" % local.lastbuild)
-					debug("Local last failed lastmodified: %s" % local.lastfailed)
-					debug("Local last build time: %s" % local.lastbuild)
-					# build new aur version
-					if local.lastsuccess >= aur.lastmodified :
+					# few debug printing
+					debug("AUR last modified: %s" % aurpkg.lastmodified)
+					debug("Local last success lastmodified: %s" % localpkg.lastbuild)
+					debug("Local last failed lastmodified: %s" % localpkg.lastfailed)
+					debug("Local last build time: %s" % localpkg.lastbuild)
+					# check if package need to be updated
+					if localpkg.lastsuccess >= aurpkg.lastmodified :
 						if "force" in pkgconfig:
 							info("Up to date, but force value is present.")
 							if pkgconfig["force"].isdigit() is False:
@@ -405,20 +409,20 @@ class Aurbot(object):
 							now = int(time())
 							force = int(pkgconfig["force"])
 							debug("Force is: %ss" % force)
-							force_delta = local.lastbuild - now + force
+							force_delta = localpkg.lastbuild - now + force
 							debug("Force Delta is: %ss" % force_delta)
 							if force_delta < 0:
 								info("Forced update")
-								self.update(pkgconfig, local, aur)
+								self.update(pkgconfig, localpkg, aurpkg)
 							else:
 								info("Next forced update in %ss" % force_delta)
 						else:
 							info("Up to date, nothing to do.")
-					elif local.lastfailed >= aur.lastmodified:
-						info("Last build has failed. We skip.")
+					elif localpkg.lastfailed >= aurpkg.lastmodified:
+						warning("Last build has failed, skipping. Remove lastfailed file to retry.")
 					else:
-						info("New version available: %s" % aur.version)
-						self.update(pkgconfig, local, aur)
+						info("New version available: %s" % aurpkg.version)
+						self.update(pkgconfig, localpkg, aurpkg)
 				# sleep until next check
 				# len(next_checks) is 0 when there is no package configured
 				timeout = min(next_checks) if len(next_checks) > 0 else DEFAULT_CHECK_INTERVAL
