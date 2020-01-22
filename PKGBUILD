@@ -13,7 +13,6 @@ backup=('etc/aurbot.conf')
 makedepends=('python-distribute')
 depends=('systemd' 'python' 'python-systemd')
 optdepends=('devtools')
-install=aurbot.install
 
 package() {
   cd "$startdir"

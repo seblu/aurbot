@@ -1,9 +1,0 @@
-#!/bin/bash
-
-## arg 1:  the new package version
-post_install() {
-  systemd-sysusers aurbot.conf
-  systemd-tmpfiles --create aurbot.conf
-}
-
-# vim:set ts=2 sw=2 ft=sh et:
