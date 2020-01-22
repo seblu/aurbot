@@ -1,18 +1,21 @@
 # Maintainer: Sébastien Luttringer
 
 pkgname=aurbot-git
-pkgver=$(git log --pretty=format:''|wc -l)
-#pkgver=$(git log -1 --pretty=format:%h)
-#pkgver=$(date +%y%j%H%M)
+pkgver=1
 pkgrel=1
 pkgdesc='AUR Builder Bot'
 arch=('any')
-url='https://github.com/seblu/aurbot'
+url='https://git.seblu.net/archlinux/aurbot/'
 license=('GPL2')
 backup=('etc/aurbot.conf')
-makedepends=('python-distribute')
+makedepends=('git' 'python-distribute')
 depends=('systemd' 'python' 'python-systemd')
 optdepends=('devtools')
+
+pkgver() {
+  cd "$startdir"
+  printf '%s.%(%Y%m%d%H%M)T' "$(git rev-list --count HEAD)"
+}
 
 package() {
   cd "$startdir"
