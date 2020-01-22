@@ -330,13 +330,15 @@ class Aurbot(object):
 				chdir(cwd)
 				# we have to register after chdir in the original directory
 				localpkg.lastsuccess = aurpkg.lastmodified
-				return True
+				status = True
 			except Exception as exp:
 				error("Update failure: %s" % exp)
 				chdir(cwd)
 				# we have to register after chdir in the original directory
 				localpkg.lastfailed = aurpkg.lastmodified
-				return False
+				status = False
+		if "notify" in pkgconfig:
+			self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
 
 	def update(self, pkgconfig, localpkg, aurpkg):
 		''' Update (build and commit) a package
@@ -355,9 +357,7 @@ class Aurbot(object):
 			error("Invalid maintainer for package %s" % aurpkg.name)
 			return
 		localpkg.lastmaintainer = aurpkg.maintainer
-		status = self.build(pkgconfig, localpkg, aurpkg)
-		if "notify" in pkgconfig:
-			self.send_build_report(pkgconfig, localpkg, aurpkg, status, fp)
+		self.build(pkgconfig, localpkg, aurpkg)
 
 	def start(self):
 		''' start the bot loop
