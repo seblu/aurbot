@@ -382,7 +382,7 @@ class Aurbot(object):
 					if check_delta > 0:
 						# next check is in the future
 						next_checks.add(check_delta)
-						info("Nothing to check. Next is planned in %ss" % check_delta)
+						info("Next check is planned in %ss" % check_delta)
 						continue
 					next_checks.add(check_interval)
 					# get remote data
