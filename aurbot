@@ -253,16 +253,17 @@ class Package():
   def _run_command(self, name, cmd, log):
     '''Fancy run of command cmd and log output in file object log.'''
     self.info(f"Starting {name} command: {cmd}")
-    log.write(f"Build command: {cmd}\n")
+    capname = name.capitalize()
+    log.write(f"{capname} command: {cmd}\n")
     log.flush()
     start_time = time()
     try:
       check_call(cmd, stdin=DEVNULL, stdout=log, stderr=log, shell=True, close_fds=True)
     except Exception as exp:
-      raise Exception(f"Build failure: {exp}") from exp
+      raise Exception(f"{capname} failure: {exp}") from exp
     end_time = time()
-    self.info(f"Build duration: {end_time - start_time:.2f}s")
-    log.write(f"Build duration: {end_time - start_time:.2f}\n")
+    self.info(f"{capname} duration: {end_time - start_time:.2f}s")
+    log.write(f"{capname} duration: {end_time - start_time:.2f}\n")
 
   def _build(self):
     '''Build a package.'''
