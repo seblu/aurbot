@@ -333,10 +333,12 @@ class Package():
       # next check is in the future
       self.info(f"Next check is planned in {check_delta}s")
       return check_delta
+    # Update the last check time
+    self._local.lastchecked = int(time())
+    check_delta = self.check_delta()
     # get remote data
     try:
       self._aur = AURPackage(self.name, self._config.getint("timeout"))
-      self._local.lastchecked = int(time())
     except Exception as exp:
       self.error(f"Unable to get AUR package info: {exp}")
       return check_delta
@@ -372,8 +374,7 @@ class Package():
       self.info(f"New version available: {self._aur.version}")
       self.update()
     # return updated check_delta
-    return self.check_delta()
-
+    return check_delta
 
 class Robot():
   '''AUR Package Builder Robot.'''
