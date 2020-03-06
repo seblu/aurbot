@@ -327,6 +327,7 @@ class Package():
     return check_delta
 
   def check(self):
+    '''Check packages for updates. Return the time in second before next check.'''
     # compute check delta
     check_delta = self.check_delta()
     if check_delta > 0:
@@ -339,7 +340,7 @@ class Package():
       self._local.lastchecked = int(time())
     except Exception as exp:
       self.error(f"Unable to get AUR package info: {exp}")
-      return
+      return check_delta
     # few debug printing
     self.debug(f"AUR last modified: {self._aur.lastmodified}")
     self.debug(f"Local last success lastmodified: {self._local.lastbuild}")
@@ -351,7 +352,7 @@ class Package():
         self.info("Up to date, but force value is present.")
         if self._config["force"].isdigit() is False:
           self.warn("Invalid force value, ignore it")
-          return
+          return check_delta
         # if lastbuild not exists, it will be equal to 0
         # too small to be > to time() even with big force time
         now = int(time())
