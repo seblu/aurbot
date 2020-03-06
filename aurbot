@@ -321,9 +321,8 @@ class Package():
   def check_delta(self):
     '''Return the time in seconds remaining before next check.'''
     check_interval = self._config.getint("check_interval", self.DEFAULT_CHECK_INTERVAL)
-    self.debug(f"Check interval is {check_interval}s")
     check_delta = int(self._local.lastchecked - time() + check_interval)
-    self.debug(f"Check delta is {check_delta}s")
+    self.debug(f"Check interval is {check_interval}s, remaining is {check_delta}s")
     return check_delta
 
   def check(self):
