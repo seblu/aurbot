@@ -447,9 +447,10 @@ class Robot():
         for pkgname in self._config.sections():
           pkg = Package(pkgname, self._config[pkgname])
           next_checks.add(pkg.check())
-        # Sleep until next check.
-        timeout = min(next_checks)
-        debug(f"Waiting for {timeout}s")
+        # Time to sleep until next check, with a minimum of 1s.
+        min_next_checks = min(next_checks)
+        timeout = max(1, min_next_checks)
+        debug(f"Next check is planned in {min_next_checks}s, waiting for {timeout}s")
         sleep(timeout)
       except InterruptedError:
         pass
