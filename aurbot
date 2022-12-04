@@ -77,7 +77,7 @@ class AURPackage(dict):
   def __init__(self, name, timeout=None):
     super().__init__()
     self.name = name
-    url = "%s/rpc.php?type=info&arg=%s" % (self.AUR_URL, name)
+    url = "%s/rpc.php?v=5&type=info&arg=%s" % (self.AUR_URL, name)
     url_req = Request(url, headers={"User-Agent": self.USER_AGENT})
     debug(f"{name} Requesting url: {url} (timeout: {timeout}s)")
     url_fd = urlopen(url_req, timeout=timeout)
