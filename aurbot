@@ -82,7 +82,7 @@ class AURPackage(dict):
     debug(f"{name} Requesting url: {url} (timeout: {timeout}s)")
     url_fd = urlopen(url_req, timeout=timeout)
     d = jloads(url_fd.read().decode("utf-8"))
-    if d["version"] != 1:
+    if d["version"] != 5:
       raise Exception(f"Unknown AUR Backend version: {d['version']}")
     if len(d["results"]) == 0:
       raise Exception(f"No such package: {name}")
